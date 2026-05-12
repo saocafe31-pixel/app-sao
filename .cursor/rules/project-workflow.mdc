@@ -1,0 +1,14 @@
+---
+description: Enforce SAO CAFE project workflow and safe edit rules
+alwaysApply: true
+---
+
+# SAO CAFE Workflow Rule
+
+- Understand flow before editing: `App` -> `Home/useProducts` -> `Bundle+Tier` -> `useCart/Cart` -> `Checkout` -> `Order/AdminOrders` -> `AdminReports`.
+- For price/amount changes, keep totals consistent across Cart, Checkout, QR amount, Order record, Tax Invoice, and Reports.
+- Prefer existing utilities: `priceTiers`, `bundleUtils`, `cartSupplierUtils`, `couponSupplierSplitUtils`, `shippingRates`.
+- Make the smallest safe change; avoid broad refactors unless requested.
+- After changes, validate recently edited files with lints/tests when available.
+- Do not remove or alter unrelated behavior, schema, or data paths.
+- Update docs when behavior/flow changes (`AGENTS.md`, `docs/PROJECT_WORKFLOW_REPORT.md` when relevant).

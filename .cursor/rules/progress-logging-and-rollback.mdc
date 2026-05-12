@@ -1,0 +1,16 @@
+---
+description: Require progress logging with timestamp, scope, and rollback path
+alwaysApply: true
+---
+
+# Progress Logging and Rollback Rule
+
+- For every non-trivial change, append an entry in `docs/PROJECT_PROGRESS_LOG.md`.
+- Each entry must include: timestamp, scope, changed files, summary, impact, verification, rollback, next step.
+- Keep `Current Phase` and `Next Goal` in the log updated when project direction changes.
+- For release events, follow `docs/RELEASE_CADENCE.md` and record release tag (e.g. `v2026.05.w2`).
+- When possible, include rollback reference:
+  - preferred: commit hash or tag
+  - fallback: explicit file-level safe-revert instruction
+- If a change affects pricing/payment/report totals, explicitly document verification steps.
+- Do not mark work complete without updating progress log.

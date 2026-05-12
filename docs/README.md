@@ -1,0 +1,54 @@
+# เอกสารโปรเจกต์ (Documentation Index)
+
+ชุดเอกสารหลักของโปรเจกต์ SAO CAFE
+
+---
+
+## ชุด API / User / Developer (หัวข้อ 7)
+
+| เอกสาร | ความหมาย |
+|--------|----------|
+| **[API_REFERENCE.md](./API_REFERENCE.md)** | ตาราง Supabase, Services, รูปแบบการเรียกข้อมูล (Data layer) |
+| **[USER_GUIDE.md](./USER_GUIDE.md)** | คู่มือผู้ใช้: ลูกค้า, แฟรนไชส์, แอดมิน + FAQ |
+| **[USER_MANUAL.md](./USER_MANUAL.md)** | คู่มือการใช้งานแอป (ภาษาไทย) — ภาพรวม, ล็อกอิน, เมนูแต่ละฝั่ง, แก้ปัญหาเบื้องต้น |
+| **[DEVELOPER_GUIDE.md](./DEVELOPER_GUIDE.md)** | คู่มือนักพัฒนา: ติดตั้ง, โครงสร้าง, รัน, deploy, ลิงก์เอกสารอื่น |
+
+---
+
+## เอกสารอื่นในโฟลเดอร์ docs
+
+| เอกสาร | ความหมาย |
+|--------|----------|
+| **SETTINGS_GUIDE.md** | แนวทางตั้งค่าทั่วไป — key ในตาราง `settings` (shop, vat, maintenance, features ฯลฯ) |
+| **[PROJECT_WORKFLOW_REPORT.md](./PROJECT_WORKFLOW_REPORT.md)** | สรุป workflow ระบบทั้งโปรเจกต์แบบ end-to-end |
+| **[PROJECT_PROGRESS_LOG.md](./PROJECT_PROGRESS_LOG.md)** | บันทึกการเปลี่ยนแปลงตามช่วงเวลา + แผน rollback + next direction |
+| **[RELEASE_CADENCE.md](./RELEASE_CADENCE.md)** | มาตรฐาน release รายสัปดาห์/รายเวอร์ชัน และแนวทาง rollback ด้วย tag |
+| **RLS_SECURITY_RECOMMENDATIONS.md** | แนวทาง RLS และความปลอดภัย |
+| **RLS_DISABLED_SECURITY_ANALYSIS.md** | การวิเคราะห์เมื่อปิด RLS |
+| **RESET_DATABASE_GUIDE.md** | คู่มือ reset ฐานข้อมูล |
+| **SECURITY_IMPROVEMENTS_PLAN.md** | แผนปรับปรุงความปลอดภัย |
+| **PROJECT_STATUS_UPDATED.md** | สถานะโปรเจกต์ (อัปเดตตามช่วง) |
+
+---
+
+## การโคลนและติดตั้งใหม่
+
+| เอกสาร | ความหมาย |
+|--------|----------|
+| **[COPY_PROJECT_QUICK_GUIDE.md](./COPY_PROJECT_QUICK_GUIDE.md)** | คัดลอกโฟลเดอร์สร้าง instance ใหม่ — เช็กลิสต์สั้น, สิ่งที่ห้าม copy |
+| **[CLONE_APP.md](./CLONE_APP.md)** | โคลน Git / คัดลอกโฟลเดอร์, แยก Supabase & Vercel, ลำดับ SQL, `.env.local` |
+| **[PROJECT_VERIFICATION.md](./PROJECT_VERIFICATION.md)** | เช็ก build, test, env, เอกสาร — ก่อนส่งมอบหรือ deploy |
+
+---
+
+## เอกสารระดับโปรเจกต์ (รากโปรเจกต์)
+
+| เอกสาร | ความหมาย |
+|--------|----------|
+| **README.md** (รากโปรเจกต์) | คำสั่งเริ่มต้น + ลิงก์ไป CLONE_APP และเอกสารอื่น |
+| **AGENTS.md** | Workflow ย่อและกติกาการแก้โค้ดสำหรับ Agent |
+| **DEPLOY.md** | ขั้นตอน Deploy: DB, Frontend, Monitoring |
+| **DEVELOPMENT_ROADMAP.md** | แผนพัฒนาต่อ และสถานะฟีเจอร์ |
+| **ENV_SETUP.md** | ตั้งค่า environment แบบละเอียด |
+| **TROUBLESHOOTING.md** | แก้ปัญหาเบื้องต้น |
+| **TESTING.md** | การรันเทสต์ (Vitest, coverage) |
