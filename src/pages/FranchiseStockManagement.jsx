@@ -12,6 +12,17 @@ import Icon from '../components/common/Icon'
 import Swal from 'sweetalert2'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 
+const STOCK_VIEW_ALL = 'all'
+const STOCK_VIEW_BY_SUPPLIER = 'by_supplier'
+const SUPPLIER_UNASSIGNED_LABEL = 'ไม่ระบุซัพพลาย'
+
+function getFranchiseStockItemSupplierName(item) {
+  const fromProduct = item?.product?.supplier || item?.product?.Supplier
+  const direct = item?.supplier || item?.Supplier
+  const name = String(fromProduct || direct || '').trim()
+  return name || SUPPLIER_UNASSIGNED_LABEL
+}
+
 function OtherSupplierCardImage({ imageUrl }) {
   const [src, setSrc] = useState(null)
   useEffect(() => {
@@ -133,6 +144,8 @@ export default function FranchiseStockManagement({ user }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [branchId, setBranchId] = useState(null)
   const [activeTab, setActiveTab] = useState('stock') // 'stock', 'lowStock', 'importOrder', 'orderOtherSupplier'
+  const [stockViewMode, setStockViewMode] = useState(STOCK_VIEW_ALL)
+  const [selectedSupplier, setSelectedSupplier] = useState(null)
   const [selectedProducts, setSelectedProducts] = useState(new Set())
   const [orderQuantities, setOrderQuantities] = useState({})
   const [orders, setOrders] = useState([])
@@ -340,9 +353,7 @@ export default function FranchiseStockManagement({ user }) {
 
   const stockSummary = useMemo(() => {
     const totalItems = stockItems.length
-    const supplierSet = new Set(
-      stockItems.map(item => (item.product?.supplier || item.product?.Supplier || 'ไม่ระบุ').toString().trim() || 'ไม่ระบุ')
-    )
+    const supplierSet = new Set(stockItems.map((item) => getFranchiseStockItemSupplierName(item)))
     return { totalItems, supplierCount: supplierSet.size }
   }, [stockItems])
 
@@ -358,21 +369,93 @@ export default function FranchiseStockManagement({ user }) {
     })
   }, [stockItems])
 
+  const baseStockItemsForView = useMemo(
+    () => (activeTab === 'lowStock' ? lowStockItems : stockItems),
+    [activeTab, stockItems, lowStockItems]
+  )
+
+  const supplierSummaries = useMemo(() => {
+    const map = new Map()
+    baseStockItemsForView.forEach((item) => {
+      const supplierName = getFranchiseStockItemSupplierName(item)
+      const stock = Number(item.stock) || 0
+      const minStock = Number(item.minstock) || 5
+      const isLow = stock <= minStock
+
+      if (!map.has(supplierName)) {
+        map.set(supplierName, {
+          name: supplierName,
+          productCount: 0,
+          lowStockCount: 0,
+          totalStock: 0
+        })
+      }
+      const row = map.get(supplierName)
+      row.productCount += 1
+      if (isLow) row.lowStockCount += 1
+      row.totalStock += stock
+    })
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, 'th'))
+  }, [baseStockItemsForView])
+
+  const supplierCardsFiltered = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase()
+    if (!q) return supplierSummaries
+    return supplierSummaries.filter((s) => s.name.toLowerCase().includes(q))
+  }, [supplierSummaries, searchTerm])
+
   const filteredStockItems = useMemo(() => {
-    const isMatch = (item) => {
-      return matchesSearch(searchTerm, [
-        item.productname || '',
-        item.productid || '',
-        item.product?.name || '',
-        item.product?.id || '',
-        item.product?.supplier || ''
-      ])
+    let list = baseStockItemsForView
+
+    if (stockViewMode === STOCK_VIEW_BY_SUPPLIER && selectedSupplier) {
+      list = list.filter((item) => getFranchiseStockItemSupplierName(item) === selectedSupplier)
     }
-    if (activeTab === 'lowStock') {
-      return lowStockItems.filter(isMatch)
+
+    if (searchTerm.trim() && !(stockViewMode === STOCK_VIEW_BY_SUPPLIER && !selectedSupplier)) {
+      list = list.filter((item) =>
+        matchesSearch(searchTerm, [
+          item.productname || '',
+          item.productid || '',
+          item.product?.name || '',
+          item.product?.id || '',
+          item.product?.supplier || '',
+          item.supplier || ''
+        ])
+      )
     }
-    return stockItems.filter(isMatch)
-  }, [stockItems, lowStockItems, searchTerm, activeTab])
+    return list
+  }, [baseStockItemsForView, stockViewMode, selectedSupplier, searchTerm])
+
+  const showStockTable =
+    stockViewMode === STOCK_VIEW_ALL ||
+    (stockViewMode === STOCK_VIEW_BY_SUPPLIER && selectedSupplier)
+
+  const handleStockViewModeChange = (mode) => {
+    setStockViewMode(mode)
+    setSelectedSupplier(null)
+    setSelectedProducts(new Set())
+  }
+
+  const handleSelectSupplier = (supplierName) => {
+    setSelectedSupplier(supplierName)
+    setSearchTerm('')
+    setSelectedProducts(new Set())
+  }
+
+  const handleBackToSuppliers = () => {
+    setSelectedSupplier(null)
+    setSearchTerm('')
+    setSelectedProducts(new Set())
+  }
+
+  const handleActiveTabChange = (tab) => {
+    setActiveTab(tab)
+    setSelectedSupplier(null)
+    setSelectedProducts(new Set())
+    if (tab === 'importOrder' || tab === 'orderOtherSupplier') {
+      setStockViewMode(STOCK_VIEW_ALL)
+    }
+  }
 
   const handleStockIn = async () => {
     if (!selectedItem || stockInQty <= 0) {
@@ -1544,13 +1627,13 @@ export default function FranchiseStockManagement({ user }) {
           <div className="bg-white rounded-lg shadow-sm mb-6">
             <div className="flex border-b border-gray-200">
               <button
-                onClick={() => setActiveTab('stock')}
+                onClick={() => handleActiveTabChange('stock')}
                 className={`px-6 py-3 font-medium ${activeTab === 'stock' ? 'border-b-2 border-emerald-600 text-emerald-600' : 'text-gray-600 hover:text-gray-900'}`}
               >
                 สต็อกทั้งหมด
               </button>
               <button
-                onClick={() => setActiveTab('lowStock')}
+                onClick={() => handleActiveTabChange('lowStock')}
                 className={`px-6 py-3 font-medium relative ${activeTab === 'lowStock' ? 'border-b-2 border-emerald-600 text-emerald-600' : 'text-gray-600 hover:text-gray-900'}`}
               >
                 แจ้งเตือนสต็อกต่ำ
@@ -1561,13 +1644,13 @@ export default function FranchiseStockManagement({ user }) {
                 )}
               </button>
               <button
-                onClick={() => setActiveTab('importOrder')}
+                onClick={() => handleActiveTabChange('importOrder')}
                 className={`px-6 py-3 font-medium ${activeTab === 'importOrder' ? 'border-b-2 border-emerald-600 text-emerald-600' : 'text-gray-600 hover:text-gray-900'}`}
               >
                 นำเข้าจากออเดอร์
               </button>
               <button
-                onClick={() => setActiveTab('orderOtherSupplier')}
+                onClick={() => handleActiveTabChange('orderOtherSupplier')}
                 className={`px-6 py-3 font-medium ${activeTab === 'orderOtherSupplier' ? 'border-b-2 border-emerald-600 text-emerald-600' : 'text-gray-600 hover:text-gray-900'}`}
               >
                 สั่งสินค้าซัพอื่น
@@ -1579,12 +1662,50 @@ export default function FranchiseStockManagement({ user }) {
           <div className={`bg-white rounded-lg shadow-sm p-4 mb-6 sticky top-16 z-40 border-b border-gray-200 ${activeTab === 'orderOtherSupplier' ? 'border-gray-100' : ''}`}>
             <div className="flex flex-col md:flex-row gap-4">
               {activeTab !== 'orderOtherSupplier' && (
-                <div className="flex-1">
+                <div className="flex-1 space-y-2">
+                  {(activeTab === 'stock' || activeTab === 'lowStock') && (
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleStockViewModeChange(STOCK_VIEW_ALL)}
+                        className={`px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 ${
+                          stockViewMode === STOCK_VIEW_ALL
+                            ? 'bg-emerald-600 text-white shadow-sm'
+                            : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        <Icon icon="fa-list" />
+                        ทั้งหมด
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleStockViewModeChange(STOCK_VIEW_BY_SUPPLIER)}
+                        className={`px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 ${
+                          stockViewMode === STOCK_VIEW_BY_SUPPLIER
+                            ? 'bg-emerald-600 text-white shadow-sm'
+                            : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        <Icon icon="fa-truck" />
+                        ตามซัพพลาย
+                      </button>
+                    </div>
+                  )}
                   <div className="relative">
                     <Icon icon="fa-search" className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                     <input
                       type="text"
-                      placeholder="ค้นหาสินค้า..."
+                      placeholder={
+                        (activeTab === 'stock' || activeTab === 'lowStock') &&
+                        stockViewMode === STOCK_VIEW_BY_SUPPLIER &&
+                        !selectedSupplier
+                          ? 'ค้นหาชื่อซัพพลายเออร์...'
+                          : (activeTab === 'stock' || activeTab === 'lowStock') &&
+                              stockViewMode === STOCK_VIEW_BY_SUPPLIER &&
+                              selectedSupplier
+                            ? `ค้นหาสินค้าใน "${selectedSupplier}"...`
+                            : 'ค้นหาสินค้า...'
+                      }
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
@@ -1968,7 +2089,73 @@ export default function FranchiseStockManagement({ user }) {
                 )}
               </div>
             </div>
+          ) : !showStockTable ? (
+            <div className="mb-6">
+              <p className="text-sm text-gray-600 mb-4">
+                เลือกซัพพลายเออร์เพื่อดูและจัดการสต็อกสินค้าของซัพนั้น
+              </p>
+              {supplierCardsFiltered.length === 0 ? (
+                <div className="bg-white rounded-xl border border-gray-200 py-16 text-center text-gray-500">
+                  <Icon icon="fa-truck" className="text-4xl text-gray-300 mb-3 block mx-auto" />
+                  <p>ไม่พบซัพพลายที่ตรงกับคำค้นหา</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {supplierCardsFiltered.map((sup) => (
+                    <button
+                      key={sup.name}
+                      type="button"
+                      onClick={() => handleSelectSupplier(sup.name)}
+                      className="group text-left bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md hover:border-emerald-300 hover:bg-emerald-50/30 transition"
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-3">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 group-hover:bg-emerald-600 group-hover:text-white transition">
+                          <Icon icon="fa-store" className="text-lg" />
+                        </div>
+                        <Icon icon="fa-chevron-right" className="text-gray-300 group-hover:text-emerald-600 mt-1" />
+                      </div>
+                      <h3 className="font-bold text-gray-900 line-clamp-2 min-h-[2.75rem] leading-snug">
+                        {sup.name}
+                      </h3>
+                      <div className="mt-3 space-y-1.5 text-sm">
+                        <div className="flex justify-between text-gray-600">
+                          <span>จำนวนสินค้า</span>
+                          <span className="font-semibold text-gray-900">{sup.productCount.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between text-gray-600">
+                          <span>สต็อกรวม</span>
+                          <span className="font-semibold text-gray-900">{Math.round(sup.totalStock).toLocaleString()}</span>
+                        </div>
+                        {sup.lowStockCount > 0 && (
+                          <p className="text-xs font-semibold text-red-600 pt-1">
+                            ใกล้หมด / ต่ำ {sup.lowStockCount.toLocaleString()} รายการ
+                          </p>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           ) : (
+            <>
+              {stockViewMode === STOCK_VIEW_BY_SUPPLIER && selectedSupplier && (
+                <div className="mb-4 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleBackToSuppliers}
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 transition"
+                  >
+                    <Icon icon="fa-arrow-left" />
+                    กลับรายการซัพพลาย
+                  </button>
+                  <span className="text-sm text-gray-500">/</span>
+                  <span className="text-sm font-bold text-emerald-800">{selectedSupplier}</span>
+                  <span className="text-xs text-gray-500 ml-auto">
+                    {filteredStockItems.length.toLocaleString()} รายการสินค้า
+                  </span>
+                </div>
+              )}
             <div className="bg-white rounded-lg shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -2126,6 +2313,7 @@ export default function FranchiseStockManagement({ user }) {
                 </table>
               </div>
             </div>
+            </>
           )}
         </div>
       </main>

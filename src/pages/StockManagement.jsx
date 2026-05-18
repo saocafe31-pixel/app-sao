@@ -148,6 +148,15 @@ function toCsvCell(value) {
   return text
 }
 
+const STOCK_VIEW_ALL = 'all'
+const STOCK_VIEW_BY_SUPPLIER = 'by_supplier'
+const SUPPLIER_UNASSIGNED_LABEL = 'ไม่ระบุซัพพลาย'
+
+function getProductSupplierName(product) {
+  const name = String(product?.supplier || product?.Supplier || '').trim()
+  return name || SUPPLIER_UNASSIGNED_LABEL
+}
+
 export default function StockManagement({ user }) {
   const navigate = useNavigate()
   const [products, setProducts] = useState([])
@@ -166,6 +175,8 @@ export default function StockManagement({ user }) {
   const [newSupplierName, setNewSupplierName] = useState('')
   const [sortBy, setSortBy] = useState('id') // 'id' | 'name'
   const [sortOrder, setSortOrder] = useState('asc') // 'asc' | 'desc'
+  const [stockViewMode, setStockViewMode] = useState(STOCK_VIEW_ALL)
+  const [selectedSupplier, setSelectedSupplier] = useState(null)
   const [formData, setFormData] = useState(buildEmptyForm)
   const [isImportingCsv, setIsImportingCsv] = useState(false)
   const csvInputRef = useRef(null)
@@ -201,8 +212,12 @@ export default function StockManagement({ user }) {
     fetchSuppliers()
   }, [])
 
-  // Debounced search
+  // Debounced search (โหมดทั้งหมด = API · โหมดซัพ = กรองในเครื่อง)
   useEffect(() => {
+    if (stockViewMode === STOCK_VIEW_BY_SUPPLIER) {
+      setIsSearching(false)
+      return
+    }
     if (searchTerm.trim() === '') {
       fetchProducts()
       return
@@ -214,7 +229,7 @@ export default function StockManagement({ user }) {
     }, 500)
 
     return () => clearTimeout(timeout)
-  }, [searchTerm])
+  }, [searchTerm, stockViewMode])
 
   const fetchProducts = async () => {
     setLoading(true)
@@ -1048,19 +1063,91 @@ export default function StockManagement({ user }) {
     return Number(primary.stock || 0)
   }
 
-  // จัดเรียงตามรหัสสินค้า หรือ ชื่อ
-  const filteredProducts = [...products].sort((a, b) => {
-    const aVal = sortBy === 'id' ? (a.id || a.ProductID || '') : (a.name || a.ProductName || '')
-    const bVal = sortBy === 'id' ? (b.id || b.ProductID || '') : (b.name || b.ProductName || '')
-    const aStr = String(aVal).toLowerCase()
-    const bStr = String(bVal).toLowerCase()
-    const cmp = aStr.localeCompare(bStr, 'th')
-    return sortOrder === 'asc' ? cmp : -cmp
-  })
+  const supplierSummaries = useMemo(() => {
+    const map = new Map()
+    ;(products || []).forEach((p) => {
+      const supplierName = getProductSupplierName(p)
+      const stock = p.isBundle === true ? getEffectiveStock(p) : Math.max(0, Number(p.stock) || 0)
+      const minStock = Number(p.minStock) || 5
+      const isLow = stock < 10 || stock < minStock
+      if (!map.has(supplierName)) {
+        map.set(supplierName, { name: supplierName, productCount: 0, lowStockCount: 0, totalStock: 0 })
+      }
+      const row = map.get(supplierName)
+      row.productCount += 1
+      if (isLow) row.lowStockCount += 1
+      row.totalStock += stock
+    })
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, 'th'))
+  }, [products])
+
+  const supplierCardsFiltered = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase()
+    if (!q) return supplierSummaries
+    return supplierSummaries.filter((s) => s.name.toLowerCase().includes(q))
+  }, [supplierSummaries, searchTerm])
+
+  const productsForListing = useMemo(() => {
+    let list = products || []
+    if (stockViewMode === STOCK_VIEW_BY_SUPPLIER && selectedSupplier) {
+      list = list.filter((p) => getProductSupplierName(p) === selectedSupplier)
+    }
+    const q = searchTerm.trim().toLowerCase()
+    if (q && stockViewMode === STOCK_VIEW_BY_SUPPLIER && selectedSupplier) {
+      list = list.filter((p) => {
+        const name = String(p.name || p.ProductName || '').toLowerCase()
+        const id = String(p.id || p.ProductID || '').toLowerCase()
+        return name.includes(q) || id.includes(q)
+      })
+    }
+    return list
+  }, [products, stockViewMode, selectedSupplier, searchTerm])
+
+  const filteredProducts = useMemo(
+    () =>
+      [...productsForListing].sort((a, b) => {
+        const aVal = sortBy === 'id' ? (a.id || a.ProductID || '') : (a.name || a.ProductName || '')
+        const bVal = sortBy === 'id' ? (b.id || b.ProductID || '') : (b.name || b.ProductName || '')
+        const aStr = String(aVal).toLowerCase()
+        const bStr = String(bVal).toLowerCase()
+        const cmp = aStr.localeCompare(bStr, 'th')
+        return sortOrder === 'asc' ? cmp : -cmp
+      }),
+    [productsForListing, sortBy, sortOrder]
+  )
+
+  const showProductTable =
+    stockViewMode === STOCK_VIEW_ALL || (stockViewMode === STOCK_VIEW_BY_SUPPLIER && selectedSupplier)
+
+  const handleStockViewModeChange = (mode) => {
+    setStockViewMode(mode)
+    setSelectedSupplier(null)
+    setCurrentPage(1)
+    if (mode === STOCK_VIEW_BY_SUPPLIER) {
+      if (searchTerm.trim()) setSearchTerm('')
+      fetchProducts()
+    }
+  }
+
+  const handleSelectSupplier = (supplierName) => {
+    setSelectedSupplier(supplierName)
+    setCurrentPage(1)
+    setSearchTerm('')
+  }
+
+  const handleBackToSuppliers = () => {
+    setSelectedSupplier(null)
+    setCurrentPage(1)
+    setSearchTerm('')
+  }
+
   const totalPages = Math.ceil(filteredProducts.length / itemsPerPage)
-  const displayedProducts = filteredProducts.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
+  const displayedProducts = useMemo(
+    () =>
+      filteredProducts
+        .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+        .map((p) => (p.isBundle === true ? { ...p, stock: getEffectiveStock(p) } : p)),
+    [filteredProducts, currentPage, itemsPerPage]
   )
 
   if (loading && products.length === 0) {
@@ -1131,23 +1218,91 @@ export default function StockManagement({ user }) {
             </p>
 
             {/* Search - Sticky */}
-            <div className="sticky top-16 z-40 bg-gray-50 py-4 -mx-6 px-6 border-b border-gray-200 shadow-sm mb-6">
+            <div className="sticky top-16 z-40 bg-gray-50 py-4 -mx-6 px-6 border-b border-gray-200 shadow-sm mb-6 space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleStockViewModeChange(STOCK_VIEW_ALL)}
+                  className={`px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 ${
+                    stockViewMode === STOCK_VIEW_ALL
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <Icon icon="fa-list" />
+                  ทั้งหมด
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleStockViewModeChange(STOCK_VIEW_BY_SUPPLIER)}
+                  className={`px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 ${
+                    stockViewMode === STOCK_VIEW_BY_SUPPLIER
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <Icon icon="fa-truck" />
+                  ตามซัพพลาย
+                </button>
+              </div>
               <div className="relative">
                 <input
                   type="text"
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="ค้นหาชื่อสินค้าเพื่อจัดการสต็อก..."
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value)
+                    setCurrentPage(1)
+                  }}
+                  placeholder={
+                    stockViewMode === STOCK_VIEW_BY_SUPPLIER && !selectedSupplier
+                      ? 'ค้นหาชื่อซัพพลายเออร์...'
+                      : stockViewMode === STOCK_VIEW_BY_SUPPLIER && selectedSupplier
+                        ? `ค้นหาสินค้าใน "${selectedSupplier}"...`
+                        : 'ค้นหาชื่อสินค้าเพื่อจัดการสต็อก...'
+                  }
                   className="w-full pl-12 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none bg-white shadow-sm"
                 />
                 <Icon icon="fa-search" className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-                {isSearching && (
+                {isSearching && stockViewMode === STOCK_VIEW_ALL && (
                   <Icon icon="fa-spinner" className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 animate-spin" />
                 )}
               </div>
             </div>
 
-            {/* Products Table */}
+            {stockViewMode === STOCK_VIEW_BY_SUPPLIER && selectedSupplier && (
+              <div className="mb-4 flex flex-wrap items-center gap-2">
+                <button type="button" onClick={handleBackToSuppliers} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 transition">
+                  <Icon icon="fa-arrow-left" /> กลับรายการซัพพลาย
+                </button>
+                <span className="text-sm text-gray-500">/</span>
+                <span className="text-sm font-bold text-emerald-800">{selectedSupplier}</span>
+                <span className="text-xs text-gray-500 ml-auto">{filteredProducts.length.toLocaleString()} รายการสินค้า</span>
+              </div>
+            )}
+
+            {stockViewMode === STOCK_VIEW_BY_SUPPLIER && !selectedSupplier && (
+              <div className="mb-6">
+                <p className="text-sm text-gray-600 mb-4">เลือกซัพพลายเออร์เพื่อดูและจัดการสต็อกสินค้าของซัพนั้น</p>
+                {supplierCardsFiltered.length === 0 ? (
+                  <div className="bg-white rounded-xl border border-gray-200 py-16 text-center text-gray-500">
+                    <Icon icon="fa-truck" className="text-4xl text-gray-300 mb-3 block mx-auto" />
+                    <p>ไม่พบซัพพลายที่ตรงกับคำค้นหา</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {supplierCardsFiltered.map((sup) => (
+                      <button key={sup.name} type="button" onClick={() => handleSelectSupplier(sup.name)} className="group text-left bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md hover:border-emerald-300 transition">
+                        <h3 className="font-bold text-gray-900 line-clamp-2">{sup.name}</h3>
+                        <p className="text-sm text-gray-600 mt-2">{sup.productCount.toLocaleString()} สินค้า · สต็อก {Math.round(sup.totalStock).toLocaleString()}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {showProductTable && (
+            <>
             <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
               <table className="w-full text-left text-sm text-gray-700">
                 <thead className="bg-gray-100 font-bold uppercase text-xs text-gray-600">
@@ -1326,7 +1481,6 @@ export default function StockManagement({ user }) {
               </table>
             </div>
 
-            {/* Pagination */}
             {totalPages > 1 && (
               <div className="mt-4 flex justify-center">
                 <div className="flex gap-2">
@@ -1359,6 +1513,8 @@ export default function StockManagement({ user }) {
                   </button>
                 </div>
               </div>
+            )}
+            </>
             )}
           </div>
         </div>

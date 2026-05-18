@@ -1,5 +1,5 @@
 import { escapeHtml } from '../utils/helpers'
-import { freeQtyForLineItem } from '../utils/orderLineItemDescription'
+import { freeQtyForLineItem, orderItemNameFirstLine } from '../utils/orderLineItemDescription'
 import { LOGO_URL } from '../utils/constants'
 import { getShopInfo, getVatRate, calcVatFromTotal } from './shopSettingsService'
 import { supabase } from '../utils/supabase'
@@ -556,6 +556,138 @@ export const printService = {
       </div>
     </body></html>`
     
+    openPrintWindow(content)
+  },
+
+  /** พิมพ์รายละเอียดออเดอร์ (ตรงกับหน้าดูรายละเอียดใน Admin Orders) */
+  async printOrderDetail(order) {
+    const shop = await getShopInfo()
+    const orderId = order.ID || order.OrderID || ''
+    const orderDateStr = formatOrderDate(order.Timestamp || order.CreatedAt || order.date)
+    const customerName = order.Username || order.UserEmail || order.User || '-'
+    const pmRaw = String(order.PaymentMethod ?? order.paymentmethod ?? '')
+      .trim()
+      .toLowerCase()
+    const paymentLabel =
+      pmRaw === 'credit' ? 'เครดิต' : pmRaw === 'transfer' ? 'โอนเงิน' : 'ไม่ระบุ'
+    const shippingLabel = order.ShippingMethod === 'pickup' ? 'รับเอง' : 'จัดส่ง'
+    const discountInfo = String(order.DiscountInfo || order.discountInfo || '')
+    const batchMatch = discountInfo.match(/Batch:\s*([^|]+)/i)
+    const batchLine = batchMatch
+      ? `<div class="meta"><strong>ชุดชำระ:</strong> ${escapeHtml(batchMatch[1].trim())}</div>`
+      : ''
+
+    const freeItemsMatch = discountInfo.match(/FreeItems:\s*([^|]+)/i)
+    const freeItemsMap = new Map()
+    if (freeItemsMatch) {
+      freeItemsMatch[1]
+        .trim()
+        .split(',')
+        .forEach((itemStr) => {
+          const match = itemStr.trim().match(/^(.+?):(\d+)$/)
+          if (match) freeItemsMap.set(match[1].trim(), parseInt(match[2], 10))
+        })
+    }
+
+    const items = order.Items || []
+    let subtotal = 0
+    const rowsHtml = items
+      .map((item, idx) => {
+        const productId = item.id || orderItemNameFirstLine(item.name) || ''
+        const freeQty = freeQtyForLineItem(freeItemsMap, item.name)
+        const paidQty = Math.max(0, (item.qty || 0) - freeQty)
+        const unitPrice = Number(item.price || 0)
+        const lineTotal = unitPrice * paidQty
+        subtotal += lineTotal
+        const allLines = String(item.name || '')
+          .split('\n')
+          .map((x) => x.trim())
+          .filter(Boolean)
+        const title = escapeHtml(allLines[0] || '-')
+        const detailLines = allLines
+          .slice(1)
+          .filter((line) => !/^BUNDLE_IDS:/i.test(line))
+          .map((line) => `<div class="sub">${escapeHtml(line)}</div>`)
+          .join('')
+        const qtyText =
+          freeQty > 0
+            ? `${item.qty} (ชำระ ${paidQty}, แถม ${freeQty})`
+            : `${item.qty || 0}`
+        return `<tr>
+          <td style="text-align:center;border:1px solid #ddd;padding:6px;">${idx + 1}</td>
+          <td style="border:1px solid #ddd;padding:6px;font-family:monospace;font-size:8pt;">${escapeHtml(String(productId))}</td>
+          <td style="border:1px solid #ddd;padding:6px;">
+            <div class="item-title">${title}</div>
+            ${detailLines}
+          </td>
+          <td style="text-align:center;border:1px solid #ddd;padding:6px;">${escapeHtml(qtyText)}</td>
+          <td style="text-align:right;border:1px solid #ddd;padding:6px;">${unitPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+          <td style="text-align:right;border:1px solid #ddd;padding:6px;font-weight:bold;">${lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+        </tr>`
+      })
+      .join('')
+
+    let discountAmount = 0
+    const discountMatch = discountInfo.match(/-(\d+(?:\.\d+)?)B/)
+    if (discountMatch) {
+      discountAmount = Number(discountMatch[1]) || 0
+    } else {
+      const amountMatch = discountInfo.match(/Amount:\s*(\d+(?:\.\d+)?)/i)
+      if (amountMatch) discountAmount = Number(amountMatch[1]) || 0
+      else discountAmount = Number(order.Discount || order.discount || 0) || 0
+    }
+    const shippingAmount =
+      Number(order['Shipping Cost'] || order.ShippingCost || order.Shipping || 0) || 0
+    const grandTotal = subtotal - discountAmount + shippingAmount
+
+    const content = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>รายละเอียดออเดอร์ ${escapeHtml(orderId)}</title>
+      <style>
+        @page { size: A4; margin: 12mm; }
+        body { font-family: 'Sarabun', sans-serif; font-size: 9pt; color: #111; line-height: 1.35; }
+        h1 { font-size: 14pt; margin: 0 0 4px 0; color: #047857; }
+        .shop { font-size: 8pt; color: #555; margin-bottom: 12px; }
+        .meta { font-size: 8pt; margin-bottom: 4px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; background: #f9fafb; }
+        .grid div span { display: block; color: #6b7280; font-size: 8pt; }
+        .grid div strong { font-size: 10pt; }
+        table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+        th { background: #047857; color: #fff; padding: 7px 5px; font-size: 8pt; border: 1px solid #047857; }
+        .item-title { font-weight: bold; }
+        .sub { font-size: 7.5pt; color: #4b5563; margin-top: 2px; }
+        .summary { margin-top: 12px; border: 1px solid #a7f3d0; background: #ecfdf5; border-radius: 6px; padding: 10px; max-width: 280px; margin-left: auto; }
+        .summary div { display: flex; justify-content: space-between; padding: 3px 0; font-size: 9pt; }
+        .summary .total { border-top: 1px solid #6ee7b7; margin-top: 6px; padding-top: 8px; font-weight: bold; font-size: 11pt; color: #047857; }
+        .disc { color: #dc2626; }
+      </style>
+    </head><body>
+      <h1>รายละเอียดออเดอร์</h1>
+      <div class="shop">${escapeHtml(shop.name || '')}</div>
+      <div class="meta"><strong>เลขที่:</strong> ${escapeHtml(orderId)} &nbsp;|&nbsp; <strong>วันที่:</strong> ${orderDateStr}</div>
+      <div class="meta"><strong>ลูกค้า:</strong> ${escapeHtml(customerName)}</div>
+      ${batchLine}
+      <div class="grid">
+        <div><span>วิธีการชำระเงิน</span><strong>${escapeHtml(paymentLabel)}</strong></div>
+        <div><span>วิธีการรับสินค้า</span><strong>${escapeHtml(shippingLabel)}</strong></div>
+      </div>
+      <table>
+        <thead><tr>
+          <th style="width:5%;">#</th>
+          <th style="width:12%;">รหัส</th>
+          <th style="width:38%;">รายการ</th>
+          <th style="width:15%;">จำนวน</th>
+          <th style="width:15%;">ราคา/หน่วย</th>
+          <th style="width:15%;">รวมสุทธิ</th>
+        </tr></thead>
+        <tbody>${rowsHtml || '<tr><td colspan="6" style="text-align:center;padding:12px;">ไม่มีรายการ</td></tr>'}</tbody>
+      </table>
+      <div class="summary">
+        <div><span>ยอดรวมสินค้า</span><span>฿${subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+        <div class="disc"><span>ส่วนลด</span><span>-฿${discountAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+        <div><span>ค่าขนส่ง</span><span>฿${shippingAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+        <div class="total"><span>ยอดสุทธิ</span><span>฿${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+      </div>
+    </body></html>`
+
     openPrintWindow(content)
   },
 

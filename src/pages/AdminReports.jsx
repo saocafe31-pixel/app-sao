@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Swal from 'sweetalert2'
 import DateRangeFilter from '../components/common/DateRangeFilter'
 import Header from '../components/common/Header'
@@ -7,8 +7,59 @@ import LoadingSpinner from '../components/common/LoadingSpinner'
 import Sidebar from '../components/common/Sidebar'
 import { orderService } from '../services/orderService'
 import { productService } from '../services/productService'
+import { printService } from '../services/printService'
+import { taxInvoiceService } from '../services/taxInvoiceService'
 import { supabase } from '../utils/supabase'
 import { toYmd } from '../utils/datePresets'
+
+const ORDER_STATUS_SHIPPED = 'จัดส่งแล้ว'
+const ORDER_STATUS_CANCELLED = 'ยกเลิก'
+const SALES_ORDER_SCOPE_ALL = 'all_in_range'
+const SALES_ORDER_SCOPE_SHIPPED = 'shipped_only_in_range'
+const TOP_PRODUCTS_RANK_REVENUE = 'revenue'
+const TOP_PRODUCTS_RANK_QTY = 'qty'
+
+function isOrderCancelled(order) {
+  const status = String(order?.Status || order?.status || '').trim()
+  if (status === ORDER_STATUS_CANCELLED) return true
+  const lower = status.toLowerCase()
+  return lower.includes('ยกเลิก') || lower.includes('cancelled')
+}
+
+function filterOrdersByDateRange(orders, range, showAll) {
+  if (showAll) return orders || []
+  const list = orders || []
+  return list.filter((order) => {
+    const orderDate = order.Timestamp || order.CreatedAt || order.created_at
+    if (!orderDate) return false
+    const dateStr = new Date(orderDate).toISOString().split('T')[0]
+    return dateStr >= range.start && dateStr <= range.end
+  })
+}
+
+function applySalesOrderScope(orders, scope) {
+  const list = orders || []
+  if (scope === SALES_ORDER_SCOPE_SHIPPED) {
+    return list.filter((o) => (o.Status || o.status || '') === ORDER_STATUS_SHIPPED)
+  }
+  return list.filter((o) => !isOrderCancelled(o))
+}
+
+function sortTopProducts(list, rankBy) {
+  const key = rankBy === TOP_PRODUCTS_RANK_QTY ? 'qty' : 'revenue'
+  return [...(list || [])].sort((a, b) => Number(b[key] || 0) - Number(a[key] || 0)).slice(0, 20)
+}
+
+function parseTaxInvoiceItems(raw) {
+  if (!raw) return []
+  if (Array.isArray(raw)) return raw
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
 
 function getDefaultDateRange() {
   const today = new Date()
@@ -21,6 +72,8 @@ export default function AdminReports({ user }) {
   const [reportType, setReportType] = useState('sales') // 'sales' or 'stock'
   const [dateRange, setDateRange] = useState(getDefaultDateRange)
   const [showAllDates, setShowAllDates] = useState(false)
+  const [salesOrderScope, setSalesOrderScope] = useState(SALES_ORDER_SCOPE_SHIPPED)
+  const [topProductsRankBy, setTopProductsRankBy] = useState(TOP_PRODUCTS_RANK_REVENUE)
 
   // Sales Report Data
   const [salesReport, setSalesReport] = useState({
@@ -31,13 +84,14 @@ export default function AdminReports({ user }) {
     taxInvoiceTotalAmount: 0,
     taxInvoices: [],
     recentTaxInvoices: [],
+    taxOrderMap: {},
     totalCost: 0,
     totalShippingCost: 0,
     profit: 0,
     profitMargin: 0,
     salesByPayment: { credit: 0, transfer: 0 },
     salesByStatus: { pending: 0, completed: 0, cancelled: 0 },
-    topProducts: [],
+    productSalesList: [],
     topCustomers: [],
     dailySales: []
   })
@@ -68,30 +122,21 @@ export default function AdminReports({ user }) {
     } else {
       fetchStockReport()
     }
-  }, [reportType, dateRange, showAllDates])
+  }, [reportType, dateRange, showAllDates, salesOrderScope])
+
+  const topProductsDisplayed = useMemo(
+    () => sortTopProducts(salesReport.productSalesList, topProductsRankBy),
+    [salesReport.productSalesList, topProductsRankBy]
+  )
 
   const fetchSalesReport = async () => {
     setLoading(true)
     try {
       const orders = await orderService.getAllOrders()
-      
-      // Filter orders by date range (หรือทั้งหมดถ้าเลือก "ทั้งหมด")
-      const filteredOrders = showAllDates
-        ? orders
-        : orders.filter(order => {
-            const orderDate = order.Timestamp || order.CreatedAt || order.created_at
-            if (!orderDate) return false
-            const dateStr = new Date(orderDate).toISOString().split('T')[0]
-            return dateStr >= dateRange.start && dateStr <= dateRange.end
-          })
+      const filteredOrders = filterOrdersByDateRange(orders, dateRange, showAllDates)
+      const reportOrders = applySalesOrderScope(filteredOrders, salesOrderScope)
 
-      // Get completed orders for sales calculations
-      const completedOrders = filteredOrders.filter(o => {
-        const status = o.Status || o.status || ''
-        return status === 'จัดส่งแล้ว'
-      })
-
-      // Tax invoices summary (บันทึก/ออกให้ลูกค้า)
+      // Tax invoices summary (บันทึก/ออกให้ลูกค้า) — อิงวันที่ใบกำกับ ไม่ผูกกับ salesOrderScope
       let taxInvoiceCount = 0
       let taxInvoiceCustomerCount = 0
       let taxInvoiceTotalAmount = 0
@@ -100,7 +145,9 @@ export default function AdminReports({ user }) {
       try {
         let taxQuery = supabase
           .from('tax_invoices')
-          .select('orderid, useremail, invoicedate, taxname, taxid, total, vat, shipping, createdat')
+          .select(
+            'orderid, useremail, invoicedate, taxname, taxid, taxaddress, total, vat, shipping, discount, items, printcount, createdat'
+          )
         if (!showAllDates) {
           const startDate = new Date(dateRange.start + 'T00:00:00').toISOString()
           const endDate = new Date(dateRange.end + 'T23:59:59').toISOString()
@@ -127,9 +174,13 @@ export default function AdminReports({ user }) {
             invoiceDate: row?.invoicedate || null,
             taxName: String(row?.taxname || '').trim(),
             taxId: String(row?.taxid || '').trim(),
+            taxAddress: String(row?.taxaddress || '').trim(),
             total: Number(row?.total || 0),
             vat: Number(row?.vat || 0),
             shipping: Number(row?.shipping || 0),
+            discount: Number(row?.discount || 0),
+            items: parseTaxInvoiceItems(row?.items),
+            printCount: Number(row?.printcount || 0),
             createdAt: row?.createdat || null
           }))
           .sort((a, b) => new Date(b.invoiceDate || b.createdAt || 0) - new Date(a.invoiceDate || a.createdAt || 0))
@@ -139,13 +190,22 @@ export default function AdminReports({ user }) {
         console.error('Error fetching tax invoices summary:', taxInvoiceError)
       }
 
+      const taxOrderIds = new Set(
+        [...taxInvoices, ...recentTaxInvoices].map((inv) => inv.orderId).filter(Boolean)
+      )
+      const taxOrderMap = {}
+      ;(orders || []).forEach((order) => {
+        const id = order.ID || order.OrderID
+        if (id && taxOrderIds.has(id)) taxOrderMap[id] = order
+      })
+
       // Calculate total sales
-      const totalSales = completedOrders.reduce((sum, order) => {
+      const totalSales = reportOrders.reduce((sum, order) => {
         return sum + Number(order.Total || order.total || 0)
       }, 0)
 
       // Calculate total shipping cost
-      const totalShippingCost = completedOrders.reduce((sum, order) => {
+      const totalShippingCost = reportOrders.reduce((sum, order) => {
         return sum + Number(order['Shipping Cost'] || order.ShippingCost || order.Shipping || order.shipping || 0)
       }, 0)
 
@@ -160,7 +220,7 @@ export default function AdminReports({ user }) {
           }
         })
 
-        completedOrders.forEach(order => {
+        reportOrders.forEach(order => {
           const items = order.Items || []
           items.forEach(item => {
             const productName = item.name || ''
@@ -179,7 +239,7 @@ export default function AdminReports({ user }) {
 
       // Sales by payment method
       const salesByPayment = { credit: 0, transfer: 0 }
-      completedOrders.forEach(order => {
+      reportOrders.forEach(order => {
         const paymentMethod = (order.PaymentMethod || order.paymentmethod || 'transfer').toLowerCase()
         const total = Number(order.Total || order.total || 0)
         if (paymentMethod === 'credit') {
@@ -189,9 +249,9 @@ export default function AdminReports({ user }) {
         }
       })
 
-      // Sales by status
+      // Sales by status (ตามชุดออเดอร์ที่ใช้ในรายงาน)
       const salesByStatus = { pending: 0, completed: 0, cancelled: 0 }
-      filteredOrders.forEach(order => {
+      reportOrders.forEach(order => {
         const status = (order.Status || order.status || '').toLowerCase()
         const total = Number(order.Total || order.total || 0)
         if (status.includes('รอ') || status.includes('pending')) {
@@ -205,7 +265,7 @@ export default function AdminReports({ user }) {
 
       // Top products
       const productSales = new Map()
-      completedOrders.forEach(order => {
+      reportOrders.forEach(order => {
         const items = order.Items || []
         items.forEach(item => {
           const productName = item.name || ''
@@ -217,13 +277,11 @@ export default function AdminReports({ user }) {
           }
         })
       })
-      const topProducts = Array.from(productSales.values())
-        .sort((a, b) => b.revenue - a.revenue)
-        .slice(0, 20)
+      const productSalesList = Array.from(productSales.values())
 
       // Top customers
       const customerSales = new Map()
-      completedOrders.forEach(order => {
+      reportOrders.forEach(order => {
         const email = order.UserEmail || order.useremail || ''
         const username = order.Username || order.username || ''
         const customerName = username || email.split('@')[0]
@@ -245,7 +303,7 @@ export default function AdminReports({ user }) {
 
       // Daily sales breakdown
       const dailySalesMap = new Map()
-      completedOrders.forEach(order => {
+      reportOrders.forEach(order => {
         const orderDate = new Date(order.Timestamp || order.CreatedAt || order.created_at)
         const dateKey = orderDate.toISOString().split('T')[0]
         const current = dailySalesMap.get(dateKey) || { date: dateKey, sales: 0, orders: 0 }
@@ -258,7 +316,7 @@ export default function AdminReports({ user }) {
 
       setSalesReport({
         totalSales,
-        totalOrders: filteredOrders.length,
+        totalOrders: reportOrders.length,
         taxInvoiceCount,
         taxInvoiceCustomerCount,
         taxInvoiceTotalAmount,
@@ -270,7 +328,8 @@ export default function AdminReports({ user }) {
         profitMargin,
         salesByPayment,
         salesByStatus,
-        topProducts,
+        productSalesList,
+        taxOrderMap,
         topCustomers,
         dailySales
       })
@@ -467,10 +526,67 @@ export default function AdminReports({ user }) {
     }
   }
 
+  const handlePrintTaxInvoiceFromReport = async (inv) => {
+    const order = salesReport.taxOrderMap?.[inv.orderId]
+    if (!order) {
+      Swal.fire({
+        icon: 'error',
+        title: 'ไม่พบข้อมูลออเดอร์',
+        text: 'ไม่สามารถพิมพ์ใบกำกับภาษีได้ เนื่องจากไม่พบออเดอร์ที่เชื่อมกับใบกำกับนี้'
+      })
+      return
+    }
+    if (!inv.taxName || !inv.taxId) {
+      Swal.fire({
+        icon: 'warning',
+        title: 'ข้อมูลไม่ครบถ้วน',
+        text: 'ใบกำกับนี้ไม่มีชื่อผู้เสียภาษีหรือเลขประจำตัวผู้เสียภาษี'
+      })
+      return
+    }
+
+    try {
+      Swal.fire({ title: 'กำลังเตรียมพิมพ์...', didOpen: () => Swal.showLoading() })
+      try {
+        await taxInvoiceService.incrementPrintCount(inv.orderId, user?.email || '', true)
+      } catch (error) {
+        console.warn('Could not increment print count:', error)
+      }
+
+      const taxData = {
+        taxName: inv.taxName,
+        taxId: inv.taxId,
+        taxAddress: inv.taxAddress || '',
+        customerPhone: '',
+        items: inv.items?.length ? inv.items : order.Items || [],
+        discount: inv.discount || 0,
+        shipping: inv.shipping || 0,
+        invoiceDate: inv.invoiceDate || new Date()
+      }
+
+      await printService.printTaxInvoice(order, taxData)
+      await fetchSalesReport()
+      Swal.close()
+    } catch (error) {
+      Swal.close()
+      console.error('Error printing tax invoice from report:', error)
+      Swal.fire({
+        icon: 'error',
+        title: 'เกิดข้อผิดพลาด',
+        text: error.message || 'ไม่สามารถพิมพ์ใบกำกับภาษีได้'
+      })
+    }
+  }
+
   const exportSalesReport = () => {
+    const scopeLabel =
+      salesOrderScope === SALES_ORDER_SCOPE_SHIPPED
+        ? `เฉพาะออเดอร์ "${ORDER_STATUS_SHIPPED}" ในช่วง`
+        : 'ออเดอร์ทุกสถานะในช่วง (ไม่รวมยกเลิก)'
     // Create CSV content
     let csv = 'รายงานยอดขาย\n'
-    csv += `ช่วงเวลา: ${dateRange.start} ถึง ${dateRange.end}\n\n`
+    csv += `ช่วงเวลา: ${showAllDates ? 'ทั้งหมด' : `${dateRange.start} ถึง ${dateRange.end}`}\n`
+    csv += `ขอบเขตออเดอร์: ${scopeLabel}\n\n`
     csv += 'สรุปยอดขาย\n'
     csv += `ยอดขายรวม,${salesReport.totalSales}\n`
     csv += `จำนวนออเดอร์,${salesReport.totalOrders}\n`
@@ -482,7 +598,7 @@ export default function AdminReports({ user }) {
     csv += `อัตรากำไร,${salesReport.profitMargin.toFixed(2)}%\n\n`
     csv += 'สินค้าขายดี\n'
     csv += 'ชื่อสินค้า,จำนวนที่ขาย,ยอดขาย\n'
-    salesReport.topProducts.forEach(product => {
+    topProductsDisplayed.forEach((product) => {
       csv += `${product.name},${product.qty},${product.revenue}\n`
     })
     csv += '\nลูกค้าที่ซื้อเยอะสุด\n'
@@ -623,6 +739,38 @@ export default function AdminReports({ user }) {
                     className="border-2 border-gray-200 rounded-lg px-4 py-2 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
                   />
                 </div>
+                {reportType === 'sales' && (
+                  <div className="flex flex-col gap-2 pt-2 border-t border-gray-100">
+                    <span className="text-sm font-medium text-gray-700">ขอบเขตออเดอร์สำหรับยอดขาย / สินค้าขายดี / กำไร</span>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSalesOrderScope(SALES_ORDER_SCOPE_ALL)}
+                        className={`px-4 py-2 rounded-lg text-sm font-semibold transition border-2 ${
+                          salesOrderScope === SALES_ORDER_SCOPE_ALL
+                            ? 'bg-emerald-600 text-white border-emerald-600'
+                            : 'bg-white text-gray-700 border-gray-200 hover:border-emerald-300'
+                        }`}
+                      >
+                        ทุกสถานะ (ไม่รวมยกเลิก)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSalesOrderScope(SALES_ORDER_SCOPE_SHIPPED)}
+                        className={`px-4 py-2 rounded-lg text-sm font-semibold transition border-2 ${
+                          salesOrderScope === SALES_ORDER_SCOPE_SHIPPED
+                            ? 'bg-emerald-600 text-white border-emerald-600'
+                            : 'bg-white text-gray-700 border-gray-200 hover:border-emerald-300'
+                        }`}
+                      >
+                        เฉพาะจัดส่งแล้ว
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      กรองจากวันที่ออเดอร์ (Timestamp) ตามช่วงด้านบน · โหมดทุกสถานะไม่นับออเดอร์ยกเลิก (สถานะมีคำว่า ยกเลิก หรือ cancelled) · ใบกำกับภาษียังอิงวันที่ออกใบกำกับแยกต่างหาก
+                    </p>
+                  </div>
+                )}
                 <DateRangeFilter
                   layout="buttonsOnly"
                   labelInline
@@ -658,9 +806,18 @@ export default function AdminReports({ user }) {
               </div>
             </div>
 
-            {/* Sales Report */}
+                {/* Sales Report */}
             {reportType === 'sales' && (
               <div className="space-y-6">
+                <p className="text-sm text-gray-600">
+                  กำลังแสดงยอดจากออเดอร์
+                  <span className="font-semibold text-gray-900">
+                    {salesOrderScope === SALES_ORDER_SCOPE_ALL
+                      ? 'ทุกสถานะ (ไม่รวมยกเลิก)'
+                      : 'เฉพาะจัดส่งแล้ว'}
+                  </span>
+                  {showAllDates ? ' (ทุกช่วงเวลา)' : ` วันที่ ${dateRange.start} ถึง ${dateRange.end}`}
+                </p>
                 {/* Summary Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                   <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -687,6 +844,7 @@ export default function AdminReports({ user }) {
                         <p className="text-xs text-gray-500 mt-1">
                           ลูกค้า {salesReport.taxInvoiceCustomerCount.toLocaleString()} ราย · ยอดรวม ฿{salesReport.taxInvoiceTotalAmount.toLocaleString()}
                         </p>
+                        <p className="text-xs text-gray-400 mt-1">ไม่เปลี่ยนตามปุ่มขอบเขตออเดอร์ (อิงวันที่ใบกำกับ)</p>
                       </div>
                       <div className="bg-violet-100 p-4 rounded-xl">
                         <Icon icon="fa-file-invoice-dollar" className="text-violet-600 text-2xl" />
@@ -774,7 +932,32 @@ export default function AdminReports({ user }) {
 
                 {/* Top Products */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                  <h2 className="text-lg font-bold text-gray-900 mb-4">สินค้าขายดี 20 อันดับ</h2>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                    <div>
+                      <h2 className="text-lg font-bold text-gray-900">สินค้าขายดี 20 อันดับ</h2>
+                      <p className="text-xs text-gray-500 mt-1">
+                        จากออเดอร์
+                        {salesOrderScope === SALES_ORDER_SCOPE_ALL
+                          ? 'ทุกสถานะ (ไม่รวมยกเลิก)'
+                          : 'จัดส่งแล้วเท่านั้น'}
+                        ในช่วงที่เลือก
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label htmlFor="topProductsRankBy" className="text-sm text-gray-600 whitespace-nowrap">
+                        จัดอันดับตาม
+                      </label>
+                      <select
+                        id="topProductsRankBy"
+                        value={topProductsRankBy}
+                        onChange={(e) => setTopProductsRankBy(e.target.value)}
+                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                      >
+                        <option value={TOP_PRODUCTS_RANK_REVENUE}>ยอดขาย</option>
+                        <option value={TOP_PRODUCTS_RANK_QTY}>จำนวนขาย</option>
+                      </select>
+                    </div>
+                  </div>
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead>
@@ -786,7 +969,7 @@ export default function AdminReports({ user }) {
                         </tr>
                       </thead>
                       <tbody>
-                        {salesReport.topProducts.map((product, index) => (
+                        {topProductsDisplayed.map((product, index) => (
                           <tr key={index} className="border-b border-gray-100 hover:bg-gray-50">
                             <td className="py-3 px-4">{index + 1}</td>
                             <td className="py-3 px-4 font-medium">{product.name}</td>
@@ -803,7 +986,14 @@ export default function AdminReports({ user }) {
 
                 {/* Top Customers */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                  <h2 className="text-lg font-bold text-gray-900 mb-4">ลูกค้าที่ซื้อเยอะสุด 20 อันดับ</h2>
+                  <h2 className="text-lg font-bold text-gray-900 mb-1">ลูกค้าที่ซื้อเยอะสุด 20 อันดับ</h2>
+                  <p className="text-xs text-gray-500 mb-4">
+                    จากออเดอร์
+                    {salesOrderScope === SALES_ORDER_SCOPE_ALL
+                      ? 'ทุกสถานะ (ไม่รวมยกเลิก)'
+                      : 'จัดส่งแล้วเท่านั้น'}
+                    ในช่วงที่เลือก
+                  </p>
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead>
@@ -845,6 +1035,7 @@ export default function AdminReports({ user }) {
                           <th className="text-left py-3 px-4 font-semibold text-gray-700">ลูกค้า</th>
                           <th className="text-left py-3 px-4 font-semibold text-gray-700">เลขผู้เสียภาษี</th>
                           <th className="text-right py-3 px-4 font-semibold text-gray-700">ยอดรวม</th>
+                          <th className="text-center py-3 px-4 font-semibold text-gray-700">ดู / พิมพ์</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -863,11 +1054,32 @@ export default function AdminReports({ user }) {
                               <td className="py-3 px-4 text-right font-semibold text-violet-700">
                                 ฿{Number(inv.total || 0).toLocaleString()}
                               </td>
+                              <td className="py-3 px-4 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => handlePrintTaxInvoiceFromReport(inv)}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                  title={
+                                    salesReport.taxOrderMap?.[inv.orderId]
+                                      ? 'เปิดหน้าต่างพิมพ์ใบกำกับภาษี'
+                                      : 'ไม่พบออเดอร์ที่เชื่อมกับใบกำกับนี้'
+                                  }
+                                  disabled={!salesReport.taxOrderMap?.[inv.orderId]}
+                                >
+                                  <Icon icon="fa-print" />
+                                  <span>ดู / พิมพ์</span>
+                                </button>
+                                {Number(inv.printCount || 0) > 0 && (
+                                  <p className="text-[10px] text-gray-400 mt-1">
+                                    พิมพ์แล้ว {inv.printCount} ครั้ง
+                                  </p>
+                                )}
+                              </td>
                             </tr>
                           ))
                         ) : (
                           <tr>
-                            <td colSpan="5" className="py-8 text-center text-gray-500">
+                            <td colSpan="6" className="py-8 text-center text-gray-500">
                               ไม่มีข้อมูลใบกำกับภาษีในช่วงเวลาที่เลือก
                             </td>
                           </tr>

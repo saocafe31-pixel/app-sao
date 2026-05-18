@@ -1202,6 +1202,22 @@ export default function AdminOrders({ user }) {
     }
   }
 
+  const handlePrintOrderDetail = async (order) => {
+    Swal.fire({ title: 'กำลังเตรียมพิมพ์...', didOpen: () => Swal.showLoading() })
+    try {
+      await printService.printOrderDetail(order)
+      Swal.close()
+    } catch (error) {
+      Swal.close()
+      console.error('Error printing order detail:', error)
+      Swal.fire({
+        icon: 'error',
+        title: 'เกิดข้อผิดพลาด',
+        text: 'ไม่สามารถพิมพ์รายละเอียดออเดอร์ได้'
+      })
+    }
+  }
+
   const handleOpenTaxInvoiceModal = async (order) => {
     // Check if order is confirmed (not in 'รอตรวจสอบ' status)
     if (order.Status === 'รอตรวจสอบ') {
@@ -2069,7 +2085,7 @@ export default function AdminOrders({ user }) {
                                   ? '<span style="color: #ea580c;"><i class="fas fa-store"></i> รับเอง</span>'
                                   : '<span style="color: #9333ea;"><i class="fas fa-truck"></i> จัดส่ง</span>'
                                 
-                                Swal.fire({
+                                void Swal.fire({
                                   title: 'รายละเอียดออเดอร์',
                                   html: `
                                     <div class="text-left space-y-3">
@@ -2187,7 +2203,14 @@ export default function AdminOrders({ user }) {
                                     </div>
                                   `,
                                   width: '720px',
+                                  showDenyButton: true,
+                                  denyButtonText: '<i class="fas fa-print"></i> พิมพ์',
+                                  denyButtonColor: '#059669',
                                   confirmButtonText: 'ปิด'
+                                }).then((result) => {
+                                  if (result.isDenied) {
+                                    void handlePrintOrderDetail(order)
+                                  }
                                 })
                               }}
                               className="text-sm text-emerald-600 hover:text-emerald-700 font-bold underline"

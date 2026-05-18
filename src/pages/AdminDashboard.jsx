@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Chart as ChartJS,
@@ -33,6 +33,16 @@ ChartJS.register(
   Filler
 )
 
+const TOP_RANK_QTY = 'qty'
+const TOP_RANK_REVENUE = 'revenue'
+
+function rankBadgeClass(index) {
+  if (index === 0) return 'bg-amber-400 text-amber-950 shadow-sm shadow-amber-200'
+  if (index === 1) return 'bg-slate-300 text-slate-800'
+  if (index === 2) return 'bg-orange-300 text-orange-900'
+  return 'bg-emerald-100 text-emerald-700'
+}
+
 export default function AdminDashboard({ user }) {
   const [stats, setStats] = useState({
     totalSales: 0,
@@ -53,6 +63,7 @@ export default function AdminDashboard({ user }) {
     }
   })
   const [topProducts, setTopProducts] = useState([])
+  const [topProductsRankBy, setTopProductsRankBy] = useState(TOP_RANK_QTY)
   const [topCustomers, setTopCustomers] = useState([])
   const [discountStats, setDiscountStats] = useState({
     totalDiscountAmount: 0,
@@ -80,6 +91,22 @@ export default function AdminDashboard({ user }) {
   useEffect(() => {
     fetchStats()
   }, [dateRange, chartPeriod, showAllDates])
+
+  const topProductsDisplayed = useMemo(() => {
+    const key = topProductsRankBy === TOP_RANK_REVENUE ? 'revenue' : 'qty'
+    return [...topProducts].sort((a, b) => Number(b[key] || 0) - Number(a[key] || 0)).slice(0, 10)
+  }, [topProducts, topProductsRankBy])
+
+  const topProductsMaxMetric = useMemo(() => {
+    if (!topProductsDisplayed.length) return 1
+    const key = topProductsRankBy === TOP_RANK_REVENUE ? 'revenue' : 'qty'
+    return Math.max(...topProductsDisplayed.map((p) => Number(p[key] || 0)), 1)
+  }, [topProductsDisplayed, topProductsRankBy])
+
+  const topCustomersMaxSpent = useMemo(() => {
+    if (!topCustomers.length) return 1
+    return Math.max(...topCustomers.map((c) => Number(c.totalSpent || 0)), 1)
+  }, [topCustomers])
 
   const fetchStats = async () => {
     setLoading(true)
@@ -969,78 +996,131 @@ export default function AdminDashboard({ user }) {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
               {/* Top Products */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 sm:p-6 min-w-0">
-                <h2 className="text-base sm:text-lg font-bold text-gray-900 mb-3 sm:mb-4">สินค้าขายดี 10 อันดับ</h2>
-                <div className="space-y-2 max-h-[28rem] overflow-y-auto pr-1 -mr-1">
-                  {topProducts.length > 0 ? (
-                    topProducts.map((product, index) => (
-                      <div
-                        key={index}
-                        className="flex items-start justify-between gap-2 sm:gap-3 p-2.5 sm:p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition overflow-hidden min-w-0"
-                      >
-                        <div className="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
-                          <div className="flex shrink-0 items-center justify-center w-7 h-7 sm:w-8 sm:h-8 bg-emerald-100 rounded-full mt-0.5">
-                            <span className="text-xs sm:text-sm font-bold text-emerald-600 tabular-nums">{index + 1}</span>
-                          </div>
-                          <div className="flex-1 min-w-0 overflow-hidden">
-                            <p
-                              className="text-xs sm:text-sm font-semibold text-gray-900 leading-snug line-clamp-2 break-words"
-                              title={product.name}
+                <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-gray-100 pb-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm">
+                      <Icon icon="fa-trophy" className="text-lg" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-bold text-gray-900">สินค้าขายดี</h2>
+                      <p className="text-xs text-gray-500">10 อันดับ · ออเดอร์จัดส่งแล้ว</p>
+                    </div>
+                  </div>
+                  <select
+                    id="dashboardTopRankBy"
+                    value={topProductsRankBy}
+                    onChange={(e) => setTopProductsRankBy(e.target.value)}
+                    className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none shrink-0"
+                  >
+                    <option value={TOP_RANK_QTY}>จัดอันดับ: จำนวนขาย</option>
+                    <option value={TOP_RANK_REVENUE}>จัดอันดับ: ยอดขาย</option>
+                  </select>
+                </div>
+                <div className="space-y-2.5 max-h-[28rem] overflow-y-auto pr-1 -mr-1">
+                  {topProductsDisplayed.length > 0 ? (
+                    topProductsDisplayed.map((product, index) => {
+                      const metricKey = topProductsRankBy === TOP_RANK_REVENUE ? 'revenue' : 'qty'
+                      const barPct = Math.round(
+                        (Number(product[metricKey] || 0) / topProductsMaxMetric) * 100
+                      )
+                      return (
+                        <div
+                          key={`${product.name}-${index}`}
+                          className={`rounded-xl border p-3 transition hover:shadow-sm ${
+                            index < 3
+                              ? 'border-emerald-200 bg-emerald-50/50'
+                              : 'border-gray-100 bg-gray-50/80'
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div
+                              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold ${rankBadgeClass(index)}`}
                             >
-                              {product.name}
-                            </p>
-                            <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5 tabular-nums">
-                              ขายได้ {product.qty.toLocaleString()} ชิ้น
-                            </p>
+                              {index + 1}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-gray-900 text-sm leading-snug line-clamp-2">
+                                {product.name}
+                              </p>
+                              <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-gray-500">
+                                <span>{Number(product.qty || 0).toLocaleString()} ชิ้น</span>
+                                <span className="font-semibold text-emerald-700">
+                                  ฿{Number(product.revenue || 0).toLocaleString()}
+                                </span>
+                              </div>
+                              <div className="mt-2 h-1.5 rounded-full bg-gray-200 overflow-hidden">
+                                <div
+                                  className="h-full rounded-full bg-emerald-500 transition-all duration-500"
+                                  style={{ width: `${barPct}%` }}
+                                />
+                              </div>
+                            </div>
                           </div>
                         </div>
-                        <div className="shrink-0 text-right pl-1 min-w-[4.25rem] sm:min-w-[5rem]">
-                          <p className="text-xs sm:text-sm font-bold text-emerald-600 tabular-nums leading-snug">
-                            ฿{product.revenue.toLocaleString()}
-                          </p>
-                        </div>
-                      </div>
-                    ))
+                      )
+                    })
                   ) : (
-                    <p className="text-gray-500 text-center py-4 text-sm">ยังไม่มีข้อมูลสินค้าขายดี</p>
+                    <div className="py-10 text-center text-gray-500 text-sm">
+                      <Icon icon="fa-box-open" className="text-2xl text-gray-300 mb-2 block mx-auto" />
+                      ยังไม่มีข้อมูลสินค้าขายดีในช่วงนี้
+                    </div>
                   )}
                 </div>
               </div>
 
               {/* Top Customers */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 sm:p-6 min-w-0">
-                <h2 className="text-base sm:text-lg font-bold text-gray-900 mb-3 sm:mb-4">ลูกค้าที่มียอดซื้อเยอะสุด</h2>
-                <div className="space-y-2 max-h-[28rem] overflow-y-auto pr-1 -mr-1">
+                <div className="mb-4 flex items-center gap-3 border-b border-gray-100 pb-4">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm">
+                    <Icon icon="fa-users" className="text-lg" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-gray-900">ลูกค้ายอดซื้อสูงสุด</h2>
+                    <p className="text-xs text-gray-500">10 อันดับ · ออเดอร์จัดส่งแล้ว</p>
+                  </div>
+                </div>
+                <div className="space-y-2.5 max-h-[28rem] overflow-y-auto pr-1 -mr-1">
                   {topCustomers.length > 0 ? (
-                    topCustomers.map((customer, index) => (
-                      <div
-                        key={index}
-                        className="flex items-start justify-between gap-2 sm:gap-3 p-2.5 sm:p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition overflow-hidden min-w-0"
-                      >
-                        <div className="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
-                          <div className="flex shrink-0 items-center justify-center w-7 h-7 sm:w-8 sm:h-8 bg-blue-100 rounded-full mt-0.5">
-                            <span className="text-xs sm:text-sm font-bold text-blue-600 tabular-nums">{index + 1}</span>
-                          </div>
-                          <div className="flex-1 min-w-0 overflow-hidden">
-                            <p
-                              className="text-xs sm:text-sm font-semibold text-gray-900 leading-snug line-clamp-2 break-all sm:break-words"
-                              title={customer.name}
+                    topCustomers.map((customer, index) => {
+                      const spent = Number(customer.totalSpent || 0)
+                      const barPct = Math.round((spent / topCustomersMaxSpent) * 100)
+                      return (
+                        <div
+                          key={`${customer.email || customer.name}-${index}`}
+                          className={`rounded-xl border p-3 transition hover:shadow-sm ${
+                            index < 3
+                              ? 'border-blue-200 bg-blue-50/50'
+                              : 'border-gray-100 bg-gray-50/80'
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div
+                              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold ${rankBadgeClass(index)}`}
                             >
-                              {customer.name}
-                            </p>
-                            <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5 tabular-nums">
-                              {customer.orderCount} ออเดอร์
-                            </p>
+                              {index + 1}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-gray-900 text-sm truncate">{customer.name}</p>
+                              <p className="text-xs text-gray-500 mt-0.5">
+                                {Number(customer.orderCount || 0).toLocaleString()} ออเดอร์
+                              </p>
+                              <p className="text-sm font-bold text-blue-700 mt-1">฿{spent.toLocaleString()}</p>
+                              <div className="mt-2 h-1.5 rounded-full bg-gray-200 overflow-hidden">
+                                <div
+                                  className="h-full rounded-full bg-blue-500 transition-all duration-500"
+                                  style={{ width: `${barPct}%` }}
+                                />
+                              </div>
+                            </div>
                           </div>
                         </div>
-                        <div className="shrink-0 text-right pl-1 min-w-[4.25rem] sm:min-w-[5rem]">
-                          <p className="text-xs sm:text-sm font-bold text-blue-600 tabular-nums leading-snug">
-                            ฿{customer.totalSpent.toLocaleString()}
-                          </p>
-                        </div>
-                      </div>
-                    ))
+                      )
+                    })
                   ) : (
-                    <p className="text-gray-500 text-center py-4 text-sm">ยังไม่มีข้อมูลลูกค้า</p>
+                    <div className="py-10 text-center text-gray-500 text-sm">
+                      <Icon icon="fa-user-slash" className="text-2xl text-gray-300 mb-2 block mx-auto" />
+                      ยังไม่มีข้อมูลลูกค้าในช่วงนี้
+                    </div>
                   )}
                 </div>
               </div>
