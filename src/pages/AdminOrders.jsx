@@ -24,6 +24,23 @@ import { supabase } from '../utils/supabase'
 import { buildProductSupplierLookups, getOrderExternalSuppliers } from '../utils/orderSupplierUtils'
 import PackingModal from '../components/PackingModal'
 import AdminCreateOrderModal from '../components/admin/AdminCreateOrderModal'
+import {
+  ADMIN_MODAL_OVERLAY,
+  ADMIN_MODAL_PANEL,
+  ADMIN_MODAL_HEADER,
+  ADMIN_MODAL_BODY,
+  ADMIN_MODAL_FOOTER
+} from '../utils/adminModalLayout'
+import {
+  ADMIN_PAGE_ROOT,
+  ADMIN_PAGE_BODY,
+  ADMIN_MAIN_COLUMN,
+  ADMIN_MAIN_INNER,
+  ADMIN_TOOLBAR,
+  ADMIN_FILTERS,
+  ADMIN_CONTENT_GROW,
+  ADMIN_TABLE_FRAME
+} from '../utils/adminPageLayout'
 
 /** จำนวนแถวจากตาราง order ต่อการดึงหนึ่งครั้ง (หนึ่งออเดอร์มีหลายแถว) — โหลดหน้าแรกเร็วขึ้น */
 const ORDERS_ROW_CHUNK = 2000
@@ -1734,16 +1751,17 @@ export default function AdminOrders({ user }) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className={ADMIN_PAGE_ROOT}>
       <Header user={user} cartItemCount={0} onCartClick={() => {}} />
       
-      <div className="flex">
+      <div className={ADMIN_PAGE_BODY}>
         <Sidebar user={user} />
         
-        <div className="flex-1 ml-0 md:ml-64 pt-16 px-6 pb-6">
-          <div className="max-w-7xl mx-auto">
-            <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
-              <h1 className="text-2xl font-bold text-gray-900">จัดการออเดอร์</h1>
+        <div className={ADMIN_MAIN_COLUMN}>
+          <div className={ADMIN_MAIN_INNER}>
+            <div className={ADMIN_TOOLBAR}>
+            <div className="flex flex-wrap justify-between items-center gap-2">
+              <h1 className="text-xl font-bold text-gray-900">จัดการออเดอร์</h1>
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
@@ -1764,37 +1782,37 @@ export default function AdminOrders({ user }) {
                 </button>
               </div>
             </div>
+            </div>
 
-            {/* Search and Date Range Filters - จัดเรียงให้สวยบนมือถือ */}
-            <div className="space-y-4 mb-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="sm:col-span-1">
-                  <label className="block text-sm font-bold text-gray-700 mb-2">ค้นหาเลขที่ออเดอร์ / ชื่อลูกค้า / อีเมล</label>
+            <div className={`${ADMIN_FILTERS} space-y-2`}>
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-2 items-end">
+                <div className="lg:col-span-5">
+                  <label className="block text-xs font-bold text-gray-600 mb-1">ค้นหา</label>
                   <input
                     type="text"
                     value={searchOrderId}
                     onChange={(e) => setSearchOrderId(e.target.value)}
-                    placeholder="กรอกเลขที่ออเดอร์, ชื่อลูกค้า หรืออีเมล..."
-                    className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-sm"
+                    placeholder="เลขออเดอร์ / ชื่อ / อีเมล..."
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">วันที่เริ่มต้น</label>
+                <div className="lg:col-span-3">
+                  <label className="block text-xs font-bold text-gray-600 mb-1">จากวันที่</label>
                   <input
                     type="date"
                     value={startDate}
                     onChange={(e) => { setStartDate(e.target.value); setShowAllDates(false) }}
-                    className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-sm"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">วันที่สิ้นสุด</label>
+                <div className="lg:col-span-3">
+                  <label className="block text-xs font-bold text-gray-600 mb-1">ถึงวันที่</label>
                   <input
                     type="date"
                     value={endDate}
                     onChange={(e) => { setEndDate(e.target.value); setShowAllDates(false) }}
                     min={startDate}
-                    className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-sm"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
                   />
                 </div>
               </div>
@@ -1824,7 +1842,7 @@ export default function AdminOrders({ user }) {
                   )
                 }
               />
-              <div className="text-xs sm:text-sm text-gray-600 bg-white border border-gray-200 rounded-lg px-3 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1">
+              <div className="text-xs text-gray-600 bg-white border border-gray-200 rounded-lg px-2 py-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
                 <span>
                   พบออเดอร์:{' '}
                   <span className="font-bold text-gray-900">
@@ -1851,23 +1869,23 @@ export default function AdminOrders({ user }) {
               </div>
             </div>
 
-            {/* Status Filter with Counts */}
-            <div className="flex gap-2 mb-6 flex-wrap">
+            <div className={ADMIN_CONTENT_GROW}>
+            <div className="shrink-0 flex gap-1.5 mb-2 flex-wrap">
               {['All', 'รอตรวจสอบ', 'กำลังจัดเตรียม', 'จัดส่งแล้ว', 'ยกเลิก'].map((status) => (
                 <button
                   key={status}
+                  type="button"
                   onClick={() => {
                     setStatusFilter(status)
-                    // Clear selections when changing filter
                     if (status !== 'กำลังจัดเตรียม') {
                       setSelectedOrdersForShipping([])
                       setTrackingNumbers({})
                     }
                   }}
-                  className={`px-4 py-2 rounded-lg font-bold transition relative ${
+                  className={`px-2.5 py-1.5 rounded-lg text-xs sm:text-sm font-bold transition relative ${
                     statusFilter === status
-                      ? 'bg-emerald-600 text-white'
-                      : 'bg-white text-gray-700 hover:bg-gray-100'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
                   }`}
                 >
                   {status}
@@ -1884,12 +1902,12 @@ export default function AdminOrders({ user }) {
               ))}
             </div>
             {hasMoreOrders && (
-              <p className="text-xs text-gray-500 mb-3 -mt-2">
+              <p className="shrink-0 text-xs text-gray-500 mb-2">
                 ตัวเลขในแท็บนับเฉพาะออเดอร์ที่โหลดแล้ว — โหลดเพิ่มด้านล่างหากมีออเดอร์เก่าที่ยังไม่แสดง
               </p>
             )}
             {(hasMoreOrders || loadingMore) && (
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-950">
+              <div className="shrink-0 mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs sm:text-sm text-amber-950">
                 <span className="min-w-0 font-medium">
                   {loadingMore ? 'กำลังโหลดชุดถัดไป...' : `มีออเดอร์เก่ากว่านี้ในระบบ — โหลดทีละ ${ORDERS_ROW_CHUNK.toLocaleString()} แถวจากตารางคำสั่งซื้อ`}
                 </span>
@@ -1908,7 +1926,7 @@ export default function AdminOrders({ user }) {
 
             {/* Bulk Shipping Controls - Only show when filter is "กำลังจัดเตรียม" */}
             {statusFilter === 'กำลังจัดเตรียม' && sortedOrders.length > 0 && (
-              <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="shrink-0 mb-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm">
                 <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
                   <h3 className="font-bold text-blue-900">ส่งสินค้าหลายออเดอร์พร้อมกัน</h3>
                   <div className="flex gap-2">
@@ -1966,34 +1984,32 @@ export default function AdminOrders({ user }) {
               </div>
             )}
 
-            {/* Orders Table */}
             {sortedOrders.length === 0 ? (
-              <div className="text-center py-20 text-gray-400 bg-white rounded-xl border border-dashed">
+              <div className="text-center py-16 text-gray-400 bg-white rounded-xl border border-dashed">
                 <Icon icon="fa-shopping-bag" className="text-5xl mb-4 opacity-50" />
                 <p>ไม่พบออเดอร์</p>
               </div>
             ) : (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
+              <div className={ADMIN_TABLE_FRAME}>
+                  <table className="w-full min-w-[900px] text-sm">
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
                         {statusFilter === 'กำลังจัดเตรียม' && (
-                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase w-12">
+                          <th className="px-2 py-2 text-left text-xs font-bold text-gray-700 uppercase w-12">
                             <Icon icon="fa-check-square" />
                           </th>
                         )}
-                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">ออเดอร์</th>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase min-w-[6rem]">
+                        <th className="px-2 py-2 text-left text-xs font-bold text-gray-700 uppercase">ออเดอร์</th>
+                        <th className="px-2 py-2 text-left text-xs font-bold text-gray-700 uppercase min-w-[6rem]">
                           ชุดชำระ (Batch)
                         </th>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">ลูกค้า</th>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase min-w-[7rem]">การจัดหา</th>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">รายการ</th>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">ยอดรวม</th>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">สถานะ</th>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">วันที่</th>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">จัดการ</th>
+                        <th className="px-2 py-2 text-left text-xs font-bold text-gray-700 uppercase">ลูกค้า</th>
+                        <th className="px-2 py-2 text-left text-xs font-bold text-gray-700 uppercase min-w-[7rem]">การจัดหา</th>
+                        <th className="px-2 py-2 text-left text-xs font-bold text-gray-700 uppercase">รายการ</th>
+                        <th className="px-2 py-2 text-left text-xs font-bold text-gray-700 uppercase">ยอดรวม</th>
+                        <th className="px-2 py-2 text-left text-xs font-bold text-gray-700 uppercase">สถานะ</th>
+                        <th className="px-2 py-2 text-left text-xs font-bold text-gray-700 uppercase">วันที่</th>
+                        <th className="px-2 py-2 text-left text-xs font-bold text-gray-700 uppercase">จัดการ</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
@@ -2004,7 +2020,7 @@ export default function AdminOrders({ user }) {
                         return (
                         <tr key={orderId} className="hover:bg-gray-50">
                           {statusFilter === 'กำลังจัดเตรียม' && (
-                            <td className="px-4 py-3">
+                            <td className="px-2 py-2 align-top">
                               <input
                                 type="checkbox"
                                 checked={isSelected}
@@ -2013,10 +2029,10 @@ export default function AdminOrders({ user }) {
                               />
                             </td>
                           )}
-                          <td className="px-4 py-3">
+                          <td className="px-2 py-2 align-top">
                             <span className="font-bold text-gray-900">{orderId}</span>
                           </td>
-                          <td className="px-4 py-3 align-top">
+                          <td className="px-2 py-2 align-top">
                             {checkoutBatch ? (
                               <span
                                 className="inline-block max-w-[10rem] truncate font-mono text-xs text-indigo-800 bg-indigo-50 px-2 py-1 rounded border border-indigo-100"
@@ -2028,7 +2044,7 @@ export default function AdminOrders({ user }) {
                               <span className="text-xs text-gray-400">—</span>
                             )}
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-2 py-2 align-top">
                             <div className="text-sm font-medium text-gray-900">
                               {(order.CustomerDisplayName ?? order.Username) || order.UserEmail || order.User || '—'}
                             </div>
@@ -2036,7 +2052,7 @@ export default function AdminOrders({ user }) {
                               <div className="text-xs text-gray-400">{order.UserEmail || order.User}</div>
                             )}
                           </td>
-                          <td className="px-4 py-3 align-top">
+                          <td className="px-2 py-2 align-top">
                             {(() => {
                               const { allCentral, externalSuppliers } = getOrderExternalSuppliers(
                                 order,
@@ -2067,7 +2083,7 @@ export default function AdminOrders({ user }) {
                               )
                             })()}
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-2 py-2 align-top">
                             <button
                               onClick={() => {
                                 const batchForDetail = parseCheckoutBatchFromDiscountInfo(order)
@@ -2218,7 +2234,7 @@ export default function AdminOrders({ user }) {
                               {order.Items?.length || 0} รายการ
                             </button>
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-2 py-2 align-top">
                             {(() => {
                               // Calculate subtotal excluding free items
                               const discountInfo = String(order.DiscountInfo || order.discountInfo || "")
@@ -2265,15 +2281,15 @@ export default function AdminOrders({ user }) {
                               )
                             })()}
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-2 py-2 align-top">
                             <span className={`px-2 py-1 rounded-full text-xs font-bold ${getStatusColor(order.Status)}`}>
                               {order.Status}
                             </span>
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-2 py-2 align-top">
                             <span className="text-sm text-gray-600">{formatDate(order.Timestamp || order.CreatedAt)}</span>
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-2 py-2 align-top">
                             <div className="flex flex-col gap-2">
                               <div className="flex gap-2">
                                 {order.Status === 'รอตรวจสอบ' && (
@@ -2407,18 +2423,21 @@ export default function AdminOrders({ user }) {
                       })}
                     </tbody>
                   </table>
-                </div>
               </div>
             )}
+            </div>
           </div>
         </div>
       </div>
 
       {/* Tax Invoice Modal */}
       {isTaxInvoiceModalOpen && editingOrderForTax && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 text-gray-800 font-normal">
-          <div className="absolute inset-0 bg-black bg-opacity-70" onClick={() => setIsTaxInvoiceModalOpen(false)}></div>
-          <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl z-10 overflow-hidden flex flex-col max-h-[90vh] font-normal">
+        <div className="fixed inset-x-0 top-16 bottom-0 z-[80] flex items-center justify-center p-3 sm:p-4 text-gray-800 font-normal">
+          <div className="absolute inset-0 bg-black/70" onClick={() => setIsTaxInvoiceModalOpen(false)} aria-hidden />
+          <div
+            className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl z-10 overflow-hidden flex flex-col max-h-[min(90vh,calc(100dvh-5.5rem))] font-normal relative"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="p-4 bg-emerald-600 text-white font-bold flex justify-between items-center">
               <span><Icon icon="fa-file-invoice-dollar" className="mr-2" />บันทึกข้อมูลภาษี - {editingOrderForTax.ID || editingOrderForTax.OrderID}</span>
               <button onClick={() => setIsTaxInvoiceModalOpen(false)}><Icon icon="fa-times"/></button>
@@ -2614,24 +2633,37 @@ export default function AdminOrders({ user }) {
 
       {/* Edit Order Modal */}
       {editingOrder && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold text-gray-900">แก้ไขออเดอร์ {editingOrder.ID || editingOrder.OrderID}</h2>
-                <button
-                  onClick={() => {
-                    setEditingOrder(null)
-                    setEditingItems([])
-                    setEditingShipping(0)
-                  }}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <Icon icon="fa-times" className="text-xl" />
-                </button>
-              </div>
+        <div
+          className={ADMIN_MODAL_OVERLAY}
+          onClick={() => {
+            setEditingOrder(null)
+            setEditingItems([])
+            setEditingShipping(0)
+          }}
+        >
+          <div
+            className={`${ADMIN_MODAL_PANEL} sm:max-w-2xl`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className={ADMIN_MODAL_HEADER}>
+              <h2 className="text-base font-bold text-gray-900 truncate">
+                แก้ไขออเดอร์ {editingOrder.ID || editingOrder.OrderID}
+              </h2>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingOrder(null)
+                  setEditingItems([])
+                  setEditingShipping(0)
+                }}
+                className="shrink-0 p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
+                aria-label="ปิด"
+              >
+                <Icon icon="fa-times" />
+              </button>
+            </div>
 
-              <div className="space-y-4">
+            <div className={`${ADMIN_MODAL_BODY} space-y-4`}>
                 {/* Items List */}
                 <div>
                   <h3 className="font-bold text-gray-700 mb-2">รายการสินค้า</h3>
@@ -2847,26 +2879,27 @@ export default function AdminOrders({ user }) {
                   )}
                 </div>
 
-                {/* Action Buttons */}
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => {
-                      setEditingOrder(null)
-                      setEditingItems([])
-                      setEditingShipping(0)
-                    }}
-                    className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-bold hover:bg-gray-300 transition"
-                  >
-                    ยกเลิก
-                  </button>
-                  <button
-                    onClick={handleSaveEdit}
-                    className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg font-bold hover:bg-emerald-700 transition"
-                  >
-                    บันทึกการแก้ไข
-                  </button>
-                </div>
-              </div>
+            </div>
+
+            <div className={`${ADMIN_MODAL_FOOTER} gap-3`}>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingOrder(null)
+                  setEditingItems([])
+                  setEditingShipping(0)
+                }}
+                className="px-4 py-2 text-sm bg-gray-200 text-gray-700 rounded-lg font-bold hover:bg-gray-300 transition sm:min-w-[7rem]"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveEdit}
+                className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg font-bold hover:bg-emerald-700 transition sm:min-w-[7rem]"
+              >
+                บันทึกการแก้ไข
+              </button>
             </div>
           </div>
         </div>

@@ -1,0 +1,39 @@
+---
+description: เมื่อไหร่ Agent commit/push GitHub ได้เอง vs ต้องถามก่อน
+alwaysApply: true
+---
+
+# Git Push Policy (SAO CAFE)
+
+## ค่าเริ่มต้น
+
+- **อย่า commit หรือ push เอง** เว้นแต่ผู้ใช้ขอชัดเจนในข้อความนั้น (เช่น "commit", "push", "อัพ github", "ขึ้น github")
+- หลังแก้โค้ดเสร็จ: สรุปไฟล์ที่เปลี่ยนและถามว่าต้องการ commit/push หรือไม่ — **ยกเว้น** ผู้ใช้สั่ง push ในคำสั่งเดียวกัน
+
+## Push ได้เลย (ไม่ต้องถามซ้ำ) เมื่อผู้ใช้สั่ง push แล้ว และงานเป็นแบบใดแบบหนึ่ง:
+
+- แก้ UI/ข้อความ/ layout ไม่กระทบยอดเงินหรือ schema
+- แก้บั๊กจำกัดขอบเขต ไฟล์เดียวหรือไม่กี่ไฟล์
+- อัปเดตเอกสาร (`docs/`, `AGENTS.md`) ตามงานที่ทำแล้ว
+- เพิ่ม/แก้ unit test ที่ไม่เปลี่ยนพฤติกรรม production
+
+## ต้องถามก่อน push แม้ผู้ใช้บอก "อัพ github" ถ้ามีอย่างน้อยหนึ่งข้อ:
+
+- **ยอดเงิน / โปร / คูปอง / ค่าส่ง** ตั้งแต่ Cart → Checkout → Order → Reports
+- **Migration / schema** (`supabase/migrations/`, SQL ตารางสำคัญ)
+- **ลบหรือเปลี่ยน flow การชำระเงิน / สต็อก / RLS**
+- เปลี่ยนหลายระบบพร้อมกันโดยผู้ใช้ไม่ได้รับรู้ในบทสนทนา
+
+ถามสั้นๆ เช่น: "มี migration โปรโมชั่น + แก้ Checkout — ต้องการ push ทั้งหมดไป main เลยไหม?"
+
+## ขั้นตอนเมื่อ push
+
+1. `git status` + `git diff` — อย่า commit ไฟล์ลับ (.env, credentials)
+2. Commit message ภาษาอังกฤษหรือไทย ชัดเจน เน้น **why**
+3. Push `origin` branch ปัจจุบัน — **ห้าม** `push --force` ไป main/master เว้นแต่ผู้ใช้สั่ง
+4. แจ้ง commit hash และลิงก์/branch ให้ผู้ใช้
+
+## อ้างอิง
+
+- กฎ commit ละเอียด: user rule `committing-changes-with-git`
+- Workflow โปรเจค: `AGENTS.md`, `docs/PROJECT_PROGRESS_LOG.md`

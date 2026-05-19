@@ -26,6 +26,94 @@
 
 ## Change Entries
 
+### [2026-05-19] โปรโมชั่น — ชิ้นที่ 2 ลดบาท/% + จำกัดการใช้ต่อคน/รวม
+- scope: promotions, checkout
+- files: `supabase/migrations/20260519130000_promotion_second_item_usage_limits.sql`, `src/utils/promotionUtils.js`, `src/utils/promotionUtils.test.js`, `src/pages/AdminPromotions.jsx`, `src/pages/Checkout.jsx`, `src/services/orderService.js`
+- summary:
+  - ประเภทใหม่ `second_item_discount` (ชิ้นที่ 2,4,6… ลด % หรือบาท/ชิ้น)
+  - ฟิลด์ `UsageLimit` (ต่อคน), `TotalUsageLimit` (รวม), นับ `UsageCount` ตอนสั่งซื้อ
+  - Checkout ตรวจขีดจำกัดก่อนใช้โปร; บันทึก `PromoIds:` ใน DiscountInfo สำหรับนับต่อคน
+- impact: admin ตั้งโปรและขีดจำกัดได้; ลูกค้าที่เกินโควตาไม่ได้ส่วนลดโปรนั้น
+- verification: `npm run test -- --run src/utils/promotionUtils.test.js`; `npm run build`; รัน migration บน Supabase; ทดสอบสร้างโปรชิ้นที่ 2 + จำกัดครั้ง
+- rollback: revert commit; รัน migration ย้อน constraint/columns ถ้าจำเป็น
+- next step: รัน migration `20260519130000` (และ `20260519120000` ถ้ายังไม่รัน) บน Supabase
+
+### [2026-05-19] แก้หัวตารางสต็อก/ออเดอร์ — หัวคอลัมอยู่ด้านบนถูกต้อง
+- scope: ui
+- files: `src/utils/adminPageLayout.js`, `src/pages/StockManagement.jsx`, `src/pages/AdminOrders.jsx`
+- summary:
+  - เอา `sticky top-16` ออกจาก `<thead>` (ชนกับ `overflow-x-auto` ทำให้หัวตารางไปโผล่ใต้แถวแรก)
+  - ใช้หัวตารางปกติ `ADMIN_TABLE_HEAD`; ปรับ padding คอลัมน์ออเดอร์ให้ตรงกับ `<th>`
+- impact: user: หัวคอลัม (รูป, รหัสสินค้า, ออเดอร์, ลูกค้า ฯลฯ) อยู่เหนือข้อมูลทุกแถว
+- verification: `npm run build`; เปิด `/admin/stock` และ `/admin/orders` ตรวจหัวตารางอยู่บนสุดของตาราง
+- rollback: คืน `ADMIN_TABLE_HEAD_STICKY` บน thead ใน commit ก่อนหน้า
+- next step: —
+
+### [2026-05-19] Layout สต็อก/ออเดอร์ — เลื่อนหน้าแนวตั้งตามปกติ (ไม่ฟิกกรอบสูง)
+- scope: ui
+- files: `src/utils/adminPageLayout.js`, `src/pages/StockManagement.jsx`, `src/pages/AdminOrders.jsx`
+- summary:
+  - ยกเลิก `h-dvh` + ตารางเลื่อนในกรอบสูงคงที่ — กลับ `min-h-screen` เลื่อนทั้งหน้าได้
+  - คงการจัดแนวนอน: `overflow-x-auto` ที่ตาราง, ปุ่ม/ฟิลเตอร์กระชับ, หัวตาราง `sticky top-16`
+- impact: user: รู้สึกจอไม่สั้น; เลื่อนลงดูรายการได้เหมือนเดิม
+- verification: `npm run build`; เลื่อนหน้าสต็อก/ออเดอร์ลงได้เต็มความยาว
+- rollback: คืน `adminPageLayout` แบบ `h-dvh` ใน commit ก่อนหน้า
+- next step: —
+
+### [2026-05-19] Layout จัดการสต็อก/ออเดอร์ — พอดีจอ ตารางเลื่อนในพื้นที่เนื้อหา (superseded)
+- scope: ui
+- files: `src/utils/adminPageLayout.js`, `src/pages/StockManagement.jsx`, `src/pages/AdminOrders.jsx`
+- summary: ทดลอง `h-dvh` — ผู้ใช้ขอเลื่อนหน้าแนวตั้งแบบเดิม (ดู entry ถัดไป)
+- impact: —
+- verification: —
+- rollback: —
+- next step: —
+
+### [2026-05-19] จัดการสต็อก — modal พอดีจอ + ค้นหาอีเมลจำกัดการมองเห็น; แก้ modal ออเดอร์
+- scope: ui/feature
+- files: `src/utils/adminModalLayout.js`, `src/components/admin/AllowedViewerEmailPicker.jsx`, `src/services/userDirectoryService.js`, `src/pages/StockManagement.jsx`, `src/pages/AdminOrders.jsx`
+- summary:
+  - มาตรฐาน overlay modal แอดมิน (`top-16`, `z-[70]`) หัว/เนื้อหาเลื่อน/ปุ่มคงที่
+  - หน้าเพิ่ม/แก้ไขสินค้า: picker ค้นหาอีเมลจากตาราง users + แท็กลบ + textarea วางหลายเมล
+  - modal แก้ไขออเดอร์ + ใบกำกับภาษี: จำกัดพื้นที่ใต้ Header
+  - แก้ margin ข้อความ CSV ที่ดึงปุ่มด้านบนทับกัน (`-mt-4` → `mt-1`)
+- impact: user: modal ไม่ทับแถบ SAO CAFE; เลือกอีเมลเห็นเฉพาะสินค้าได้ง่ายขึ้น
+- verification: `npm run build`; ทดสอบเพิ่มสินค้า → จำกัดอีเมล → พิมพ์ค้นหา → เลือกจากรายการ
+- rollback: revert ไฟล์ด้านบน
+- next step: นำ `adminModalLayout` ไปใช้กับ modal หน้าอื่นที่เหลือเมื่อมีเวลา
+
+### [2026-05-19] ปรับขนาด modal เพิ่ม/แก้ไขโปรโมชั่นไม่ล้นจอ / ไม่ทับ Header
+- scope: ui
+- files: `src/pages/AdminPromotions.jsx`
+- summary:
+  - overlay เริ่มใต้ Header (`top-16`), `z-[70]` (สูงกว่า Header `z-[60]`)
+  - จำกัดความสูง modal (~520px), เลื่อนเฉพาะเนื้อหาฟอร์ม ส่วนหัว/ปุ่มคงที่
+  - ลดความกว้าง `max-w-md`, ช่องกรอกกระชับ, grid จำนวนซื้อ/แถม วันที่ ยอดขั้นต่ำ/สถานะ
+  - บล็อก Supplier ยุบใน `<details>`
+- impact: user: modal ไม่ทับแถบ SAO CAFE ด้านบน; ฟังก์ชันเดิมไม่เปลี่ยน
+- verification: เปิดหน้าจัดการโปรโมชั่น → เพิ่มโปร → หัว modal อยู่ใต้ Header ชัดเจน
+- rollback: revert `src/pages/AdminPromotions.jsx` (ส่วน Promotion Modal)
+- next step: —
+
+### [2026-05-19] แก้ logic โปรโมชั่นให้ตรงหน้าชำระเงิน + ปรับ UI จัดการโปรโมชั่น
+- scope: fix/feature
+- files: `src/utils/promotionUtils.js`, `src/utils/promotionUtils.test.js`, `src/pages/Checkout.jsx`, `src/pages/AdminPromotions.jsx`, `supabase/migrations/20260519120000_promotion_target_unit_price.sql`
+- summary:
+  - ส่วนลดจำนวนเงิน: หัก **ต่อชิ้น** (× จำนวนที่ซื้อ) ไม่ใช่ครั้งเดียวต่อออเดอร์
+  - เพิ่มประเภท **ราคาพิเศษต่อชิ้น** (`target_unit_price`) สำหรับเคส “ลดเหลือ 290”
+  - วันสิ้นสุดนับถึงสิ้นวัน; ฟอร์มแอดมินมีคำอธิบายและ preview ราคาสินค้า
+- impact:
+  - user: โปรที่ตั้งในแอดมินตรงกับที่เห็นตอนชำระเงินมากขึ้น; ต้องเปิดสถานะ «ใช้งาน» และเลือกประเภทให้ตรงความหมาย
+  - dev/agent: logic รวมใน `promotionUtils` ใช้ร่วม Checkout/Admin
+- verification:
+  - `npm run build` + `vitest src/utils/promotionUtils.test.js` ผ่าน
+  - ทดสอบ: สร้างโปร target_unit_price 290 บาท สินค้า A002 → ใส่ตะกร้า → หน้า Checkout แสดงส่วนลดตามราคาปกติ−290
+  - รัน migration `20260519120000_promotion_target_unit_price.sql` บน Supabase ก่อนบันทึกประเภทใหม่
+- rollback:
+  - revert ไฟล์ด้านบน; ลบ type จาก CHECK constraint ถ้าจำเป็น
+- next:
+  - แก้โปรเดิม «กาแฟดอยชาว ลดเหลือ 290» เป็นประเภทราคาพิเศษ 290 บาท และเปิดใช้งาน
+
 ### [2026-05-18] พิมพ์รายละเอียดออเดอร์จากโมดัล Admin Orders
 - scope: feature
 - files: `src/services/printService.js`, `src/pages/AdminOrders.jsx`

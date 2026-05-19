@@ -9,6 +9,25 @@ import Sidebar from '../components/common/Sidebar'
 import Icon from '../components/common/Icon'
 import Swal from 'sweetalert2'
 import LoadingSpinner from '../components/common/LoadingSpinner'
+import {
+  PROMOTION_TYPE_LABELS,
+  formatPromotionCondition,
+  promotionDateInputToIsoRange
+} from '../utils/promotionUtils'
+
+const MODAL_LABEL = 'block text-xs font-medium text-gray-700 mb-0.5'
+const MODAL_INPUT =
+  'w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none'
+
+const PROMOTION_TYPE_HELP = {
+  buy_x_get_y: 'เมื่อซื้อสินค้า X ครบจำนวนที่กำหนด ระบบเพิ่มสินค้าแถม Y ในตะกร้าอัตโนมัติ (หน้าชำระเงิน)',
+  discount_percentage: 'หัก % จากยอดสินค้า X ในตะกร้า (เฉพาะชิ้นที่ต้องจ่าย ไม่รวมแถม)',
+  discount_fixed: 'หักจำนวนเงินต่อชิ้น จากสินค้า X (เช่น ลด 10 บาท/ชิ้น × จำนวนที่ซื้อ)',
+  target_unit_price:
+    'กำหนดราคาขายต่อชิ้น (เช่น 290 บาท/ชิ้น) — ส่วนลด = (ราคาปกติ − ราคาโปร) × จำนวน ใช้แทนการตั้งชื่อว่า "ลดเหลือ X" ในช่องส่วนลดเงิน',
+  second_item_discount:
+    'ซื้อสินค้า X อย่างน้อย 2 ชิ้น — ชิ้นที่ 2, 4, 6 … ได้ส่วนลด (บาท/ชิ้น หรือ %) ตามที่ตั้งไว้'
+}
 
 export default function AdminPromotions({ user }) {
   const [promotions, setPromotions] = useState([])
@@ -38,7 +57,10 @@ export default function AdminPromotions({ user }) {
     ValidUntil: '',
     Status: 'active',
     Description: '',
-    allowedSupplierKeys: []
+    allowedSupplierKeys: [],
+    UsageLimit: 0,
+    TotalUsageLimit: 0,
+    secondItemDiscountMode: 'percent'
   })
 
   // Helper function to handle number input - removes leading zero when user starts typing
@@ -133,7 +155,10 @@ export default function AdminPromotions({ user }) {
       ValidUntil: '',
       Status: 'active',
       Description: '',
-      allowedSupplierKeys: []
+      allowedSupplierKeys: [],
+      UsageLimit: 0,
+      TotalUsageLimit: 0,
+      secondItemDiscountMode: 'percent'
     })
     setShowModal(true)
   }
@@ -167,7 +192,13 @@ export default function AdminPromotions({ user }) {
       ValidUntil: promotion.ValidUntil ? promotion.ValidUntil.toString().split('T')[0] : '',
       Status: promotion.Status || 'active',
       Description: promotion.Description || '',
-      allowedSupplierKeys: parseAllowedSupplierKeys(promotion.AllowedSupplierKeys) || []
+      allowedSupplierKeys: parseAllowedSupplierKeys(promotion.AllowedSupplierKeys) || [],
+      UsageLimit: promotion.UsageLimit || 0,
+      TotalUsageLimit: promotion.TotalUsageLimit || 0,
+      secondItemDiscountMode:
+        promotion.Type === 'second_item_discount' && !(Number(promotion.DiscountPercentage) > 0)
+          ? 'fixed'
+          : 'percent'
     })
     setShowModal(true)
   }
@@ -224,13 +255,59 @@ export default function AdminPromotions({ user }) {
         Swal.fire({
           icon: 'warning',
           title: 'กรุณากรอกข้อมูล',
-          text: 'กรุณากรอกจำนวนเงินส่วนลดที่มากกว่า 0'
+          text: 'กรุณากรอกจำนวนเงินส่วนลดต่อชิ้นที่มากกว่า 0'
+        })
+        return
+      }
+    } else if (promotionForm.Type === 'target_unit_price') {
+      if (promotionForm.DiscountAmount < 0) {
+        Swal.fire({
+          icon: 'warning',
+          title: 'กรุณากรอกข้อมูล',
+          text: 'กรุณากรอกราคาพิเศษต่อชิ้น (0 = ฟรี)'
+        })
+        return
+      }
+    } else if (promotionForm.Type === 'second_item_discount') {
+      if (promotionForm.secondItemDiscountMode === 'percent') {
+        if (promotionForm.DiscountPercentage <= 0 || promotionForm.DiscountPercentage > 100) {
+          Swal.fire({
+            icon: 'warning',
+            title: 'ข้อมูลไม่ถูกต้อง',
+            text: 'กรุณากรอกเปอร์เซ็นต์ส่วนลดชิ้นที่ 2 ระหว่าง 1–100%'
+          })
+          return
+        }
+      } else if (promotionForm.DiscountAmount <= 0) {
+        Swal.fire({
+          icon: 'warning',
+          title: 'กรุณากรอกข้อมูล',
+          text: 'กรุณากรอกจำนวนเงินส่วนลดต่อชิ้นที่ 2 ที่มากกว่า 0'
         })
         return
       }
     }
 
+    if (promotionForm.ValidFrom && promotionForm.ValidUntil && promotionForm.ValidFrom > promotionForm.ValidUntil) {
+      Swal.fire({
+        icon: 'warning',
+        title: 'วันที่ไม่ถูกต้อง',
+        text: 'วันที่เริ่มต้นต้องไม่หลังวันที่สิ้นสุด'
+      })
+      return
+    }
+
     try {
+      const isSecondItem = promotionForm.Type === 'second_item_discount'
+      const secondPercent =
+        isSecondItem && promotionForm.secondItemDiscountMode === 'percent'
+          ? Number(promotionForm.DiscountPercentage) || 0
+          : 0
+      const secondFixed =
+        isSecondItem && promotionForm.secondItemDiscountMode === 'fixed'
+          ? Number(promotionForm.DiscountAmount) || 0
+          : 0
+
       const promotionData = {
         Name: promotionForm.Name.trim(),
         Type: promotionForm.Type,
@@ -238,14 +315,18 @@ export default function AdminPromotions({ user }) {
         GetProductID: promotionForm.GetProductID?.trim() || null,
         BuyQuantity: Number(promotionForm.BuyQuantity) || 0,
         GetQuantity: Number(promotionForm.GetQuantity) || 0,
-        DiscountPercentage: Number(promotionForm.DiscountPercentage) || 0,
-        DiscountAmount: Number(promotionForm.DiscountAmount) || 0,
+        DiscountPercentage: isSecondItem
+          ? secondPercent
+          : Number(promotionForm.DiscountPercentage) || 0,
+        DiscountAmount: isSecondItem ? secondFixed : Number(promotionForm.DiscountAmount) || 0,
         MinPurchase: Number(promotionForm.MinPurchase) || 0,
         MaxDiscount: Number(promotionForm.MaxDiscount) || 0,
-        ValidFrom: promotionForm.ValidFrom ? new Date(promotionForm.ValidFrom).toISOString() : null,
-        ValidUntil: promotionForm.ValidUntil ? new Date(promotionForm.ValidUntil).toISOString() : null,
+        ValidFrom: promotionDateInputToIsoRange(promotionForm.ValidFrom, 'from'),
+        ValidUntil: promotionDateInputToIsoRange(promotionForm.ValidUntil, 'until'),
         Status: promotionForm.Status,
         Description: promotionForm.Description || '',
+        UsageLimit: Number(promotionForm.UsageLimit) || 0,
+        TotalUsageLimit: Number(promotionForm.TotalUsageLimit) || 0,
         AllowedSupplierKeys:
           promotionForm.allowedSupplierKeys && promotionForm.allowedSupplierKeys.length > 0
             ? promotionForm.allowedSupplierKeys
@@ -397,14 +478,33 @@ export default function AdminPromotions({ user }) {
     }
   }
 
-  const getTypeLabel = (type) => {
-    const typeMap = {
-      'buy_x_get_y': 'ซื้อ X แถม Y',
-      'discount_percentage': 'ส่วนลดเปอร์เซ็นต์',
-      'discount_fixed': 'ส่วนลดจำนวนเงิน'
-    }
-    return typeMap[type] || type
+  const getTypeLabel = (type) => PROMOTION_TYPE_LABELS[type] || type
+
+  const handlePromotionTypeChange = (nextType) => {
+    setPromotionForm((f) => ({
+      ...f,
+      Type: nextType,
+      BuyQuantity: nextType === 'buy_x_get_y' ? f.BuyQuantity : 0,
+      GetQuantity: nextType === 'buy_x_get_y' ? f.GetQuantity : 0,
+      GetProductID: nextType === 'buy_x_get_y' ? f.GetProductID : '',
+      DiscountPercentage:
+        nextType === 'discount_percentage' || nextType === 'second_item_discount'
+          ? f.DiscountPercentage
+          : 0,
+      MaxDiscount:
+        nextType === 'discount_percentage' || nextType === 'second_item_discount' ? f.MaxDiscount : 0,
+      DiscountAmount:
+        nextType === 'discount_fixed' ||
+        nextType === 'target_unit_price' ||
+        nextType === 'second_item_discount'
+          ? f.DiscountAmount
+          : 0,
+      secondItemDiscountMode:
+        nextType === 'second_item_discount' ? f.secondItemDiscountMode || 'percent' : 'percent'
+    }))
   }
+
+  const getProductById = (id) => products.find((p) => p.id === id)
 
   const getSelectedProduct = () => {
     return products.find(p => p.id === promotionForm.ProductID)
@@ -443,9 +543,9 @@ export default function AdminPromotions({ user }) {
       <div className="flex">
         <Sidebar user={user} />
         
-        <div className="flex-1 ml-0 md:ml-64 pt-16 px-6 pb-6">
-          <div className="max-w-7xl mx-auto">
-            <div className="flex justify-between items-center mb-6">
+        <div className="flex-1 ml-0 md:ml-64 pt-16 px-4 sm:px-6 pb-6 min-w-0">
+          <div className="max-w-[1600px] mx-auto w-full">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
               <h1 className="text-2xl font-bold text-gray-900">จัดการโปรโมชั่น</h1>
               <button
                 onClick={handleAddPromotion}
@@ -493,9 +593,9 @@ export default function AdminPromotions({ user }) {
                 <p className="text-gray-500 text-lg">ไม่พบข้อมูลโปรโมชั่น</p>
               </div>
             ) : (
-              <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+              <div className="bg-white rounded-lg shadow-sm overflow-hidden border border-gray-200">
                 <div className="overflow-x-auto">
-                  <table className="w-full">
+                  <table className="w-full min-w-[1100px] text-sm">
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
                         <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase">ชื่อโปรโมชั่น</th>
@@ -539,8 +639,13 @@ export default function AdminPromotions({ user }) {
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                               {getTypeLabel(type)}
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                              {productId}
+                            <td className="px-3 py-3 text-sm font-medium text-gray-900">
+                              <div className="font-mono">{productId}</div>
+                              {getProductById(productId)?.name && (
+                                <div className="text-xs text-gray-500 font-normal line-clamp-2 mt-0.5">
+                                  {getProductById(productId).name}
+                                </div>
+                              )}
                             </td>
                             <td className="px-6 py-4 text-sm text-gray-600">
                               <div className="space-y-1">
@@ -559,7 +664,24 @@ export default function AdminPromotions({ user }) {
                                 )}
                                 {type === 'discount_fixed' && (
                                   <>
-                                    <div>ส่วนลด ฿{Number(promotion.DiscountAmount || 0).toLocaleString()}</div>
+                                    <div>ลด ฿{Number(promotion.DiscountAmount || 0).toLocaleString()} ต่อชิ้น</div>
+                                  </>
+                                )}
+                                {type === 'target_unit_price' && (
+                                  <>
+                                    <div>ราคา ฿{Number(promotion.DiscountAmount || 0).toLocaleString()} / ชิ้น</div>
+                                  </>
+                                )}
+                                {type === 'second_item_discount' && (
+                                  <>
+                                    {Number(promotion.DiscountPercentage) > 0 ? (
+                                      <div>ชิ้นที่ 2,4,6… ลด {promotion.DiscountPercentage}%</div>
+                                    ) : (
+                                      <div>
+                                        ชิ้นที่ 2,4,6… ลด ฿
+                                        {Number(promotion.DiscountAmount || 0).toLocaleString()}/ชิ้น
+                                      </div>
+                                    )}
                                   </>
                                 )}
                                 {promotion.MinPurchase > 0 && (
@@ -573,11 +695,16 @@ export default function AdminPromotions({ user }) {
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                               {formatDate(promotion.ValidUntil)}
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <td className="px-6 py-4 whitespace-nowrap text-center text-xs">
                               <div className="text-sm font-semibold text-gray-900">
-                                {(promotion.UsageCount || 0).toLocaleString()}
+                                ใช้แล้ว {(promotion.UsageCount || 0).toLocaleString()} ครั้ง
                               </div>
-                              <div className="text-xs text-gray-500">ครั้ง</div>
+                              {(promotion.TotalUsageLimit || 0) > 0 && (
+                                <div className="text-gray-500">รวมสูงสุด {promotion.TotalUsageLimit} ครั้ง</div>
+                              )}
+                              {(promotion.UsageLimit || 0) > 0 && (
+                                <div className="text-gray-500">ต่อคน {promotion.UsageLimit} ครั้ง</div>
+                              )}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-center">
                               <button
@@ -621,54 +748,69 @@ export default function AdminPromotions({ user }) {
 
       {/* Promotion Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
-              <h2 className="text-xl font-bold text-gray-900">
+        <div
+          className="fixed inset-x-0 top-16 bottom-0 z-[70] flex items-end sm:items-center justify-center bg-black/50 p-3 sm:p-4"
+          onClick={() => setShowModal(false)}
+        >
+          <div
+            className="bg-white w-full sm:max-w-md sm:mx-2 rounded-t-2xl sm:rounded-xl shadow-xl flex flex-col max-h-[calc(100%-0.5rem)] sm:max-h-[min(520px,calc(100dvh-5.5rem))]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="shrink-0 border-b border-gray-200 px-4 py-3 flex justify-between items-center gap-2">
+              <h2 className="text-base font-bold text-gray-900 truncate">
                 {editingPromotion ? 'แก้ไขโปรโมชั่น' : 'เพิ่มโปรโมชั่นใหม่'}
               </h2>
               <button
+                type="button"
                 onClick={() => setShowModal(false)}
-                className="text-gray-400 hover:text-gray-600"
+                className="shrink-0 p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
+                aria-label="ปิด"
               >
                 <Icon icon="fa-times" />
               </button>
             </div>
 
-            <div className="p-6 space-y-4">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3 space-y-3">
               {/* Name */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className={MODAL_LABEL}>
                   ชื่อโปรโมชั่น *
                 </label>
                 <input
                   type="text"
                   value={promotionForm.Name}
                   onChange={(e) => setPromotionForm({ ...promotionForm, Name: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  className={MODAL_INPUT}
                   placeholder="เช่น ซื้อ 10 แถม 1"
                 />
               </div>
 
               {/* Type */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className={MODAL_LABEL}>
                   ประเภทโปรโมชั่น *
                 </label>
                 <select
                   value={promotionForm.Type}
-                  onChange={(e) => setPromotionForm({ ...promotionForm, Type: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  onChange={(e) => handlePromotionTypeChange(e.target.value)}
+                  className={MODAL_INPUT}
                 >
                   <option value="buy_x_get_y">ซื้อ X แถม Y</option>
                   <option value="discount_percentage">ส่วนลดเปอร์เซ็นต์</option>
-                  <option value="discount_fixed">ส่วนลดจำนวนเงิน</option>
+                  <option value="discount_fixed">ส่วนลดต่อชิ้น (บาท)</option>
+                  <option value="target_unit_price">ราคาพิเศษต่อชิ้น (บาท)</option>
+                  <option value="second_item_discount">ชิ้นที่ 2 ลด (บาท/%)</option>
                 </select>
+                {PROMOTION_TYPE_HELP[promotionForm.Type] && (
+                  <p className="mt-1.5 text-xs leading-snug text-blue-800 bg-blue-50 border border-blue-100 rounded-lg px-2 py-1.5">
+                    {PROMOTION_TYPE_HELP[promotionForm.Type]}
+                  </p>
+                )}
               </div>
 
               {/* ProductID */}
               <div className="product-dropdown-container">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className={MODAL_LABEL}>
                   รหัสสินค้า (X) *
                 </label>
                 <div className="relative">
@@ -688,10 +830,10 @@ export default function AdminPromotions({ user }) {
                         setShowProductDropdown(true)
                       }
                     }}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    className={MODAL_INPUT}
                   />
                   {showProductDropdown && (productSearchTerm || !getSelectedProduct()) && filteredProducts.length > 0 && (
-                    <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-40 overflow-y-auto text-sm">
                       {filteredProducts.slice(0, 10).map((product) => (
                         <div
                           key={product.id}
@@ -710,18 +852,19 @@ export default function AdminPromotions({ user }) {
                   )}
                 </div>
                 {getSelectedProduct() && !productSearchTerm && (
-                  <div className="mt-2 text-sm text-gray-600">
-                    <span className="font-medium">สินค้า:</span> {getSelectedProduct().name}
-                  </div>
+                  <p className="mt-1 text-xs text-gray-600 truncate">
+                    {getSelectedProduct().name}
+                  </p>
                 )}
               </div>
 
               {/* Buy X Get Y Fields */}
               {promotionForm.Type === 'buy_x_get_y' && (
                 <>
+                  <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      จำนวนที่ต้องซื้อ (X) *
+                    <label className={MODAL_LABEL}>
+                      จำนวนซื้อ (X) *
                     </label>
                     <input
                       type="text"
@@ -751,13 +894,46 @@ export default function AdminPromotions({ user }) {
                           e.target.select()
                         }
                       }}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                      placeholder="เช่น 10"
+                      className={MODAL_INPUT}
+                      placeholder="10"
                     />
                   </div>
+                  <div>
+                    <label className={MODAL_LABEL}>
+                      จำนวนแถม (Y) *
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={promotionForm.GetQuantity === 0 ? '' : String(promotionForm.GetQuantity)}
+                      onChange={(e) => {
+                        const inputValue = e.target.value
+                        if (inputValue === '' || inputValue === null || inputValue === undefined) {
+                          setPromotionForm({ ...promotionForm, GetQuantity: 0 })
+                          return
+                        }
+                        const numbersOnly = inputValue.replace(/[^0-9]/g, '')
+                        if (numbersOnly === '') {
+                          setPromotionForm({ ...promotionForm, GetQuantity: 0 })
+                          return
+                        }
+                        const cleaned = numbersOnly.replace(/^0+/, '') || '0'
+                        const numValue = parseInt(cleaned) || 0
+                        setPromotionForm({ ...promotionForm, GetQuantity: numValue })
+                      }}
+                      onFocus={(e) => {
+                        if (promotionForm.GetQuantity === 0) {
+                          e.target.select()
+                        }
+                      }}
+                      className={MODAL_INPUT}
+                      placeholder="1"
+                    />
+                  </div>
+                  </div>
                   <div className="product-dropdown-container">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      สินค้าที่ได้เพิ่ม (Y) * (ว่าง = สินค้าเดียวกัน)
+                    <label className={MODAL_LABEL}>
+                      สินค้าแถม (Y) <span className="font-normal text-gray-500">ว่าง = เหมือน X</span>
                     </label>
                     <div className="relative">
                       <input
@@ -776,10 +952,10 @@ export default function AdminPromotions({ user }) {
                             setShowGetProductDropdown(true)
                           }
                         }}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                        className={MODAL_INPUT}
                       />
                       {showGetProductDropdown && (getProductSearchTerm || !getSelectedGetProduct()) && (
-                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-40 overflow-y-auto text-sm">
                           <div
                             onClick={() => {
                               setPromotionForm({ ...promotionForm, GetProductID: '' })
@@ -808,60 +984,19 @@ export default function AdminPromotions({ user }) {
                       )}
                     </div>
                     {getSelectedGetProduct() && !getProductSearchTerm && (
-                      <div className="mt-2 text-sm text-gray-600">
-                        <span className="font-medium">สินค้า Y:</span> {getSelectedGetProduct().name}
-                      </div>
+                      <p className="mt-1 text-xs text-gray-600 truncate">
+                        {getSelectedGetProduct().name}
+                      </p>
                     )}
-                    {!promotionForm.GetProductID && !getProductSearchTerm && (
-                      <div className="mt-2 text-sm text-gray-500">
-                        <span className="font-medium">หมายเหตุ:</span> ถ้าไม่เลือก จะใช้สินค้าเดียวกันกับ X
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      จำนวนที่ได้เพิ่ม (Y) *
-                    </label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={promotionForm.GetQuantity === 0 ? '' : String(promotionForm.GetQuantity)}
-                      onChange={(e) => {
-                        const inputValue = e.target.value
-                        // Allow empty string
-                        if (inputValue === '' || inputValue === null || inputValue === undefined) {
-                          setPromotionForm({ ...promotionForm, GetQuantity: 0 })
-                          return
-                        }
-                        // Only allow numbers
-                        const numbersOnly = inputValue.replace(/[^0-9]/g, '')
-                        if (numbersOnly === '') {
-                          setPromotionForm({ ...promotionForm, GetQuantity: 0 })
-                          return
-                        }
-                        // Remove leading zeros
-                        const cleaned = numbersOnly.replace(/^0+/, '') || '0'
-                        const numValue = parseInt(cleaned) || 0
-                        setPromotionForm({ ...promotionForm, GetQuantity: numValue })
-                      }}
-                      onFocus={(e) => {
-                        // If value is 0, select all text so user can type new number
-                        if (promotionForm.GetQuantity === 0) {
-                          e.target.select()
-                        }
-                      }}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                      placeholder="เช่น 1"
-                    />
                   </div>
                 </>
               )}
 
               {/* Discount Percentage Fields */}
               {promotionForm.Type === 'discount_percentage' && (
-                <>
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className={MODAL_LABEL}>
                       เปอร์เซ็นต์ส่วนลด (%) *
                     </label>
                     <input
@@ -886,12 +1021,12 @@ export default function AdminPromotions({ user }) {
                           e.target.select()
                         }
                       }}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                      className={MODAL_INPUT}
                       placeholder="เช่น 10"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className={MODAL_LABEL}>
                       ส่วนลดสูงสุด (บาท) (0 = ไม่จำกัด)
                     </label>
                     <input
@@ -915,19 +1050,22 @@ export default function AdminPromotions({ user }) {
                           e.target.select()
                         }
                       }}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                      placeholder="เช่น 100"
+                      className={MODAL_INPUT}
+                      placeholder="100"
                     />
                   </div>
-                </>
+                </div>
               )}
 
               {/* Discount Fixed Fields */}
               {promotionForm.Type === 'discount_fixed' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    จำนวนเงินส่วนลด (บาท) *
+                  <label className={MODAL_LABEL}>
+                    ส่วนลดต่อชิ้น (บาท) *
                   </label>
+                  <p className="text-xs text-gray-500 mb-2">
+                    หักต่อชิ้นที่ซื้อ (เช่น ลด 10 บาท × 3 ชิ้น = ลด 30 บาท) — ไม่ใช่ราคาขายรวม
+                  </p>
                   <input
                     type="number"
                     min="0.01"
@@ -949,16 +1087,195 @@ export default function AdminPromotions({ user }) {
                           e.target.select()
                         }
                       }}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    className={MODAL_INPUT}
                     placeholder="เช่น 50"
                   />
                 </div>
               )}
 
+              {promotionForm.Type === 'target_unit_price' && (
+                <div>
+                  <label className={MODAL_LABEL}>
+                    ราคาพิเศษต่อชิ้น (บาท) *
+                  </label>
+                  <p className="text-xs text-gray-500 mb-2">
+                    ใช้เมื่อต้องการขายในราคาเดียว เช่น ลดเหลือ 290 บาท/ชิ้น (ส่วนลดคำนวณจากราคาปกติ − ราคานี้)
+                  </p>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={promotionForm.DiscountAmount === 0 ? '' : promotionForm.DiscountAmount}
+                    onChange={(e) => {
+                      const inputValue = e.target.value
+                      if (inputValue === '' || inputValue === null || inputValue === undefined) {
+                        setPromotionForm({ ...promotionForm, DiscountAmount: 0 })
+                        return
+                      }
+                      const cleaned = inputValue.replace(/^0+(?=\d)/, '') || inputValue
+                      const numValue = parseFloat(cleaned) || 0
+                      setPromotionForm({ ...promotionForm, DiscountAmount: numValue })
+                    }}
+                    className={MODAL_INPUT}
+                    placeholder="เช่น 290"
+                  />
+                  {getSelectedProduct() && (
+                    <p className="mt-2 text-xs text-emerald-800 bg-emerald-50 border border-emerald-100 rounded px-2 py-1">
+                      ราคาปกติสินค้า X: ฿{Number(getSelectedProduct().price || 0).toLocaleString()} / ชิ้น
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {promotionForm.Type === 'second_item_discount' && (
+                <>
+                  <div>
+                    <label className={MODAL_LABEL}>รูปแบบส่วนลดชิ้นที่ 2 *</label>
+                    <div className="flex gap-4 text-sm mt-1">
+                      <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="secondItemDiscountMode"
+                          checked={promotionForm.secondItemDiscountMode === 'percent'}
+                          onChange={() =>
+                            setPromotionForm((f) => ({
+                              ...f,
+                              secondItemDiscountMode: 'percent',
+                              DiscountAmount: 0
+                            }))
+                          }
+                        />
+                        เปอร์เซ็นต์ (%)
+                      </label>
+                      <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="secondItemDiscountMode"
+                          checked={promotionForm.secondItemDiscountMode === 'fixed'}
+                          onChange={() =>
+                            setPromotionForm((f) => ({
+                              ...f,
+                              secondItemDiscountMode: 'fixed',
+                              DiscountPercentage: 0,
+                              MaxDiscount: 0
+                            }))
+                          }
+                        />
+                        จำนวนเงิน (บาท/ชิ้น)
+                      </label>
+                    </div>
+                  </div>
+                  {promotionForm.secondItemDiscountMode === 'percent' ? (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className={MODAL_LABEL}>เปอร์เซ็นต์ลดชิ้นที่ 2 (%) *</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="100"
+                          step="0.01"
+                          value={
+                            promotionForm.DiscountPercentage === 0
+                              ? ''
+                              : promotionForm.DiscountPercentage
+                          }
+                          onChange={(e) => {
+                            const v = e.target.value
+                            setPromotionForm({
+                              ...promotionForm,
+                              DiscountPercentage: v === '' ? 0 : parseFloat(v) || 0
+                            })
+                          }}
+                          className={MODAL_INPUT}
+                          placeholder="เช่น 50"
+                        />
+                      </div>
+                      <div>
+                        <label className={MODAL_LABEL}>ส่วนลดสูงสุด (บาท) (0 = ไม่จำกัด)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={promotionForm.MaxDiscount === 0 ? '' : promotionForm.MaxDiscount}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            setPromotionForm({
+                              ...promotionForm,
+                              MaxDiscount: v === '' ? 0 : parseFloat(v) || 0
+                            })
+                          }}
+                          className={MODAL_INPUT}
+                          placeholder="100"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className={MODAL_LABEL}>ลดต่อชิ้นที่ 2,4,6… (บาท) *</label>
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        value={promotionForm.DiscountAmount === 0 ? '' : promotionForm.DiscountAmount}
+                        onChange={(e) => {
+                          const v = e.target.value
+                          setPromotionForm({
+                            ...promotionForm,
+                            DiscountAmount: v === '' ? 0 : parseFloat(v) || 0
+                          })
+                        }}
+                        className={MODAL_INPUT}
+                        placeholder="เช่น 30"
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={MODAL_LABEL}>จำกัดครั้งต่อคน (0 = ไม่จำกัด)</label>
+                  <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={promotionForm.UsageLimit === 0 ? '' : promotionForm.UsageLimit}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    setPromotionForm({
+                      ...promotionForm,
+                      UsageLimit: v === '' ? 0 : parseInt(v, 10) || 0
+                    })
+                  }}
+                  className={MODAL_INPUT}
+                  placeholder="เช่น 1"
+                  />
+                </div>
+                <div>
+                  <label className={MODAL_LABEL}>จำกัดครั้งรวมทั้งโปร (0 = ไม่จำกัด)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={promotionForm.TotalUsageLimit === 0 ? '' : promotionForm.TotalUsageLimit}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    setPromotionForm({
+                      ...promotionForm,
+                      TotalUsageLimit: v === '' ? 0 : parseInt(v, 10) || 0
+                    })
+                  }}
+                  className={MODAL_INPUT}
+                  placeholder="เช่น 100"
+                />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
               {/* MinPurchase */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  ยอดซื้อขั้นต่ำ (บาท) (0 = ไม่จำกัด)
+                <label className={MODAL_LABEL}>
+                  ยอดขั้นต่ำ (0=ไม่จำกัด)
                 </label>
                 <input
                   type="number"
@@ -981,65 +1298,66 @@ export default function AdminPromotions({ user }) {
                           e.target.select()
                         }
                       }}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                  placeholder="เช่น 500"
+                  className={MODAL_INPUT}
+                  placeholder="500"
                 />
               </div>
 
-              {/* ValidFrom */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  วันที่เริ่มต้น
+                <label className={MODAL_LABEL}>
+                  สถานะ
+                </label>
+                <select
+                  value={promotionForm.Status}
+                  onChange={(e) => setPromotionForm({ ...promotionForm, Status: e.target.value })}
+                  className={MODAL_INPUT}
+                >
+                  <option value="active">ใช้งาน</option>
+                  <option value="inactive">ปิดใช้งาน</option>
+                </select>
+              </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={MODAL_LABEL}>
+                  วันที่เริ่ม
                 </label>
                 <input
                   type="date"
                   value={promotionForm.ValidFrom}
                   onChange={(e) => setPromotionForm({ ...promotionForm, ValidFrom: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  className={MODAL_INPUT}
                 />
               </div>
 
               {/* ValidUntil */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className={MODAL_LABEL}>
                   วันที่สิ้นสุด
                 </label>
                 <input
                   type="date"
                   value={promotionForm.ValidUntil}
                   onChange={(e) => setPromotionForm({ ...promotionForm, ValidUntil: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  className={MODAL_INPUT}
                 />
               </div>
-
-              {/* Status */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  สถานะ
-                </label>
-                <select
-                  value={promotionForm.Status}
-                  onChange={(e) => setPromotionForm({ ...promotionForm, Status: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                >
-                  <option value="active">ใช้งาน</option>
-                  <option value="inactive">ปิดใช้งาน</option>
-                </select>
               </div>
 
-              <div className="border border-amber-100 bg-amber-50/80 rounded-lg p-4 space-y-2">
-                <label className="block text-sm font-bold text-amber-950">
-                  Supplier ที่โปรนี้ใช้ได้ (กรณีตะกร้าหลายซัพ)
-                </label>
-                <p className="text-xs text-amber-900">
-                  ไม่เลือก = อัตโนมัติ: ถ้ามีสินค้า <strong>ส่วนกลาง</strong> ร่วมกับซัพอื่น โปรจะใช้ได้เมื่อสินค้า X เป็นซัพที่อนุญาต
-                  ถ้า<strong>ไม่มีส่วนกลาง</strong>และมีมากกว่า 1 ซัพ ต้องเลือก Supplier อย่างน้อย 1 รายการ และสินค้า X ต้องเป็นซัพในรายการนี้
-                </p>
-                <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
+              <details className="border border-amber-100 bg-amber-50/80 rounded-lg text-sm">
+                <summary className="cursor-pointer px-3 py-2 font-medium text-amber-950">
+                  Supplier (หลายซัพ) — ไม่บังคับ
+                </summary>
+                <div className="px-3 pb-2 border-t border-amber-100">
+                  <p className="text-xs text-amber-900 pt-1.5 mb-1.5 leading-snug">
+                    ไม่เลือก = ใช้กฎอัตโนมัติตามส่วนกลาง/หลายซัพ
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
                   {supplierOptions.map((name) => (
                     <label
                       key={name}
-                      className="inline-flex items-center gap-1.5 text-xs bg-white border border-amber-200 rounded px-2 py-1 cursor-pointer"
+                      className="inline-flex items-center gap-1.5 text-xs bg-white border border-amber-200 rounded px-2 py-0.5 cursor-pointer"
                     >
                       <input
                         type="checkbox"
@@ -1049,34 +1367,37 @@ export default function AdminPromotions({ user }) {
                       <span>{name}</span>
                     </label>
                   ))}
+                  </div>
                 </div>
-              </div>
+              </details>
 
               {/* Description */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className={MODAL_LABEL}>
                   รายละเอียด
                 </label>
                 <textarea
                   value={promotionForm.Description}
                   onChange={(e) => setPromotionForm({ ...promotionForm, Description: e.target.value })}
-                  rows="3"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  rows="2"
+                  className={MODAL_INPUT}
                   placeholder="รายละเอียดโปรโมชั่น..."
                 />
               </div>
             </div>
 
-            <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-4 flex justify-end gap-3">
+            <div className="shrink-0 bg-gray-50 border-t border-gray-200 px-4 py-3 flex justify-end gap-2">
               <button
+                type="button"
                 onClick={() => setShowModal(false)}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                className="px-3 py-1.5 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
               >
                 ยกเลิก
               </button>
               <button
+                type="button"
                 onClick={handleSavePromotion}
-                className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition"
+                className="px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition"
               >
                 บันทึก
               </button>

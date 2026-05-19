@@ -17,6 +17,25 @@ import {
   parseProductOptions
 } from '../utils/productCatalog'
 import { sanitizePriceTiersForDb, MAX_PRICE_TIERS } from '../utils/priceTiers'
+import AllowedViewerEmailPicker from '../components/admin/AllowedViewerEmailPicker'
+import {
+  ADMIN_MODAL_OVERLAY,
+  ADMIN_MODAL_PANEL,
+  ADMIN_MODAL_HEADER,
+  ADMIN_MODAL_BODY,
+  ADMIN_MODAL_FOOTER
+} from '../utils/adminModalLayout'
+import {
+  ADMIN_PAGE_ROOT,
+  ADMIN_PAGE_BODY,
+  ADMIN_MAIN_COLUMN,
+  ADMIN_MAIN_INNER,
+  ADMIN_TOOLBAR,
+  ADMIN_FILTERS,
+  ADMIN_CONTENT_GROW,
+  ADMIN_TABLE_FRAME,
+  ADMIN_TABLE_HEAD
+} from '../utils/adminPageLayout'
 
 function buildEmptyForm() {
   return {
@@ -180,7 +199,7 @@ export default function StockManagement({ user }) {
   const [formData, setFormData] = useState(buildEmptyForm)
   const [isImportingCsv, setIsImportingCsv] = useState(false)
   const csvInputRef = useRef(null)
-  const itemsPerPage = 20
+  const itemsPerPage = 15
   const isEditingBundleProduct = editingProduct?.isBundle === true
   const linkedBundlePrimaryStock = useMemo(() => {
     if (!isEditingBundleProduct) return null
@@ -1155,17 +1174,27 @@ export default function StockManagement({ user }) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
+    <div className={ADMIN_PAGE_ROOT}>
       <Header user={user} cartItemCount={0} onCartClick={() => {}} />
 
-      <div className="flex">
+      <div className={ADMIN_PAGE_BODY}>
         <Sidebar user={user} />
 
-        <div className="flex-1 ml-0 md:ml-64 pt-16 px-6 pb-6">
-          <div className="max-w-7xl mx-auto">
-            <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
-              <h1 className="text-2xl font-bold text-gray-900">จัดการสต็อก</h1>
-              <div className="flex gap-2">
+        <div className={ADMIN_MAIN_COLUMN}>
+          <div className={ADMIN_MAIN_INNER}>
+            <div className={ADMIN_TOOLBAR}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h1 className="text-xl font-bold text-gray-900">จัดการสต็อก</h1>
+              <button
+                type="button"
+                onClick={handleAddProduct}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm font-bold hover:bg-emerald-700 transition shrink-0"
+              >
+                <Icon icon="fa-plus" />
+                <span>เพิ่มสินค้า</span>
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
                 <input
                   ref={csvInputRef}
                   type="file"
@@ -1174,56 +1203,57 @@ export default function StockManagement({ user }) {
                   onChange={handleCsvImport}
                 />
                 <button
+                  type="button"
                   onClick={handleDownloadCsvTemplate}
-                  className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-white rounded-lg font-bold hover:bg-gray-800 transition"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs sm:text-sm bg-gray-700 text-white rounded-lg font-bold hover:bg-gray-800 transition"
                   title="ดาวน์โหลดตัวอย่างไฟล์ CSV"
                 >
                   <Icon icon="fa-download" />
-                  <span>ดาวน์โหลด Template CSV</span>
+                  <span className="hidden sm:inline">Template CSV</span>
+                  <span className="sm:hidden">CSV</span>
                 </button>
                 <button
+                  type="button"
                   onClick={handleImportCsvClick}
                   disabled={isImportingCsv}
-                  className="flex items-center gap-2 px-4 py-2 bg-sky-600 text-white rounded-lg font-bold hover:bg-sky-700 transition disabled:opacity-60 disabled:cursor-not-allowed"
-                  title="นำเข้าข้อมูลสินค้าแบบหลายรายการจาก CSV"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs sm:text-sm bg-sky-600 text-white rounded-lg font-bold hover:bg-sky-700 transition disabled:opacity-60"
+                  title="นำเข้า CSV"
                 >
                   <Icon icon={isImportingCsv ? 'fa-spinner' : 'fa-upload'} className={isImportingCsv ? 'animate-spin' : ''} />
-                  <span>{isImportingCsv ? 'กำลังนำเข้า...' : 'นำเข้า CSV'}</span>
+                  <span>{isImportingCsv ? 'นำเข้า...' : 'นำเข้า CSV'}</span>
                 </button>
                 <button
+                  type="button"
                   onClick={() => navigate('/admin/bundle-composer')}
-                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs sm:text-sm bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition"
                 >
                   <Icon icon="fa-boxes" />
-                  <span>Bundle Composer</span>
+                  <span className="hidden md:inline">Bundle</span>
                 </button>
                 <button
+                  type="button"
                   onClick={() => navigate('/admin/stock/qr-codes')}
-                  className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg font-bold hover:bg-amber-700 transition"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs sm:text-sm bg-amber-600 text-white rounded-lg font-bold hover:bg-amber-700 transition"
                 >
                   <Icon icon="fa-qrcode" />
-                  <span>QR Code รายการสินค้า</span>
-                </button>
-                <button
-                  onClick={handleAddProduct}
-                  className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg font-bold hover:bg-emerald-700 transition"
-                >
-                  <Icon icon="fa-plus" />
-                  <span>เพิ่มสินค้าใหม่</span>
+                  <span className="hidden md:inline">QR สินค้า</span>
                 </button>
               </div>
+            <details className="text-xs text-gray-500">
+              <summary className="cursor-pointer hover:text-gray-700">คำแนะนำนำเข้า CSV</summary>
+              <p className="mt-1 leading-relaxed">
+                หัวตารางอย่างน้อย <span className="font-mono">name,price</span> (แนะนำ <span className="font-mono">productid</span>)
+                — รองรับ stock, category, supplier, unit, weight, minstock, franchiseprice, cost, shophidden
+              </p>
+            </details>
             </div>
-            <p className="text-xs text-gray-500 -mt-4 mb-4">
-              CSV ต้องมีหัวตารางอย่างน้อย: <span className="font-mono">name,price</span> (แนะนำมี <span className="font-mono">productid</span> ด้วย) รองรับคอลัมน์อื่น เช่น stock, category, supplier, unit, weight, minstock, franchiseprice, cost, shophidden
-            </p>
 
-            {/* Search - Sticky */}
-            <div className="sticky top-16 z-40 bg-gray-50 py-4 -mx-6 px-6 border-b border-gray-200 shadow-sm mb-6 space-y-3">
-              <div className="flex flex-wrap gap-2">
+            <div className={ADMIN_FILTERS}>
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={() => handleStockViewModeChange(STOCK_VIEW_ALL)}
-                  className={`px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 ${
+                  className={`px-3 py-1.5 rounded-lg text-xs sm:text-sm font-bold transition flex items-center gap-1.5 ${
                     stockViewMode === STOCK_VIEW_ALL
                       ? 'bg-emerald-600 text-white shadow-sm'
                       : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
@@ -1235,7 +1265,7 @@ export default function StockManagement({ user }) {
                 <button
                   type="button"
                   onClick={() => handleStockViewModeChange(STOCK_VIEW_BY_SUPPLIER)}
-                  className={`px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 ${
+                  className={`px-3 py-1.5 rounded-lg text-xs sm:text-sm font-bold transition flex items-center gap-1.5 ${
                     stockViewMode === STOCK_VIEW_BY_SUPPLIER
                       ? 'bg-emerald-600 text-white shadow-sm'
                       : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
@@ -1244,8 +1274,13 @@ export default function StockManagement({ user }) {
                   <Icon icon="fa-truck" />
                   ตามซัพพลาย
                 </button>
+                {showProductTable && filteredProducts.length > 0 && (
+                  <span className="text-xs text-gray-500 ml-auto">
+                    {filteredProducts.length.toLocaleString()} รายการ
+                  </span>
+                )}
               </div>
-              <div className="relative">
+              <div className="relative mt-2">
                 <input
                   type="text"
                   value={searchTerm}
@@ -1260,17 +1295,18 @@ export default function StockManagement({ user }) {
                         ? `ค้นหาสินค้าใน "${selectedSupplier}"...`
                         : 'ค้นหาชื่อสินค้าเพื่อจัดการสต็อก...'
                   }
-                  className="w-full pl-12 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none bg-white shadow-sm"
+                  className="w-full pl-10 pr-10 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none bg-white"
                 />
-                <Icon icon="fa-search" className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                <Icon icon="fa-search" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
                 {isSearching && stockViewMode === STOCK_VIEW_ALL && (
-                  <Icon icon="fa-spinner" className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 animate-spin" />
+                  <Icon icon="fa-spinner" className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 animate-spin text-sm" />
                 )}
               </div>
             </div>
 
+            <div className={ADMIN_CONTENT_GROW}>
             {stockViewMode === STOCK_VIEW_BY_SUPPLIER && selectedSupplier && (
-              <div className="mb-4 flex flex-wrap items-center gap-2">
+              <div className="shrink-0 mb-2 flex flex-wrap items-center gap-2">
                 <button type="button" onClick={handleBackToSuppliers} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 transition">
                   <Icon icon="fa-arrow-left" /> กลับรายการซัพพลาย
                 </button>
@@ -1281,8 +1317,8 @@ export default function StockManagement({ user }) {
             )}
 
             {stockViewMode === STOCK_VIEW_BY_SUPPLIER && !selectedSupplier && (
-              <div className="mb-6">
-                <p className="text-sm text-gray-600 mb-4">เลือกซัพพลายเออร์เพื่อดูและจัดการสต็อกสินค้าของซัพนั้น</p>
+              <div className="mb-4">
+                <p className="text-sm text-gray-600 mb-3">เลือกซัพพลายเออร์เพื่อดูและจัดการสต็อกสินค้าของซัพนั้น</p>
                 {supplierCardsFiltered.length === 0 ? (
                   <div className="bg-white rounded-xl border border-gray-200 py-16 text-center text-gray-500">
                     <Icon icon="fa-truck" className="text-4xl text-gray-300 mb-3 block mx-auto" />
@@ -1303,12 +1339,12 @@ export default function StockManagement({ user }) {
 
             {showProductTable && (
             <>
-            <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div className={ADMIN_TABLE_FRAME}>
               <table className="w-full text-left text-sm text-gray-700">
-                <thead className="bg-gray-100 font-bold uppercase text-xs text-gray-600">
+                <thead className={`${ADMIN_TABLE_HEAD} font-bold uppercase text-xs text-gray-600`}>
                   <tr>
-                    <th className="p-4">รูปภาพ</th>
-                    <th className="p-4">
+                    <th className="px-2 py-2 w-14">รูป</th>
+                    <th className="px-2 py-2">
                       <button
                         type="button"
                         onClick={() => {
@@ -1322,7 +1358,7 @@ export default function StockManagement({ user }) {
                         {sortBy !== 'id' && <Icon icon="fa-sort" className="text-gray-300" />}
                       </button>
                     </th>
-                    <th className="p-4">
+                    <th className="px-2 py-2">
                       <button
                         type="button"
                         onClick={() => {
@@ -1336,8 +1372,8 @@ export default function StockManagement({ user }) {
                         {sortBy !== 'name' && <Icon icon="fa-sort" className="text-gray-300" />}
                       </button>
                     </th>
-                    <th className="p-4 text-center">คงเหลือ</th>
-                    <th className="p-4 text-right">จัดการ</th>
+                    <th className="px-2 py-2 text-center w-24">คงเหลือ</th>
+                    <th className="px-2 py-2 text-right min-w-[11rem]">จัดการ</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -1375,24 +1411,24 @@ export default function StockManagement({ user }) {
                     const bundlePrimaryName = bundlePrimary?.name || bundlePrimaryId || 'สินค้าหลัก'
                     return (
                     <tr key={product.id} className="hover:bg-gray-50">
-                      <td className="p-4">
+                      <td className="px-2 py-1.5">
                         {product.image ? (
                           <img 
                             src={product.image} 
                             alt={product.name}
-                            className="w-16 h-16 object-cover rounded-lg"
+                            className="w-10 h-10 object-cover rounded"
                           />
                         ) : (
-                          <div className="w-16 h-16 bg-gray-200 rounded-lg flex items-center justify-center">
-                            <Icon icon="fa-image" className="text-gray-400 text-xl" />
+                          <div className="w-10 h-10 bg-gray-200 rounded flex items-center justify-center">
+                            <Icon icon="fa-image" className="text-gray-400 text-sm" />
                           </div>
                         )}
                       </td>
-                      <td className="p-4">
-                        <span className="font-mono text-gray-700">{product.id || product.ProductID || '-'}</span>
+                      <td className="px-2 py-1.5 font-mono text-xs text-gray-700">
+                        {product.id || product.ProductID || '-'}
                       </td>
-                      <td className="p-4">
-                        <div className="font-bold flex flex-wrap items-center gap-2">
+                      <td className="px-2 py-1.5">
+                        <div className="font-semibold text-sm flex flex-wrap items-center gap-1">
                           {product.name}
                           {product.shopHidden && (
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900">ปิดรายการ</span>
@@ -1409,7 +1445,7 @@ export default function StockManagement({ user }) {
                         </div>
                         <div className="text-[10px] text-gray-400 uppercase mt-1">{product.category}</div>
                       </td>
-                      <td className="p-4 text-center">
+                      <td className="px-2 py-1.5 text-center">
                         <span
                           className={`px-2 py-1 rounded text-xs font-bold ${
                             effectiveStock < 10
@@ -1420,14 +1456,16 @@ export default function StockManagement({ user }) {
                           {effectiveStock} {product.unit || 'ชิ้น'}
                         </span>
                       </td>
-                      <td className="p-4 text-right">
-                        <div className="flex justify-end gap-2">
+                      <td className="px-2 py-1.5 text-right">
+                        <div className="flex justify-end flex-wrap gap-1">
                           <button
+                            type="button"
                             onClick={() => handleEditProduct(product)}
-                            className="p-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-xs flex items-center gap-1 font-bold"
+                            className="px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-[11px] flex items-center gap-0.5 font-bold"
+                            title="แก้ไขสินค้า"
                           >
                             <Icon icon="fa-edit" />
-                            แก้ไขสินค้า
+                            <span className="hidden xl:inline">แก้ไข</span>
                           </button>
                           <button
                             onClick={() => {
@@ -1441,7 +1479,7 @@ export default function StockManagement({ user }) {
                               }
                               handleEditStock(product)
                             }}
-                            className={`p-2 rounded transition text-xs flex items-center gap-1 border font-bold ${
+                            className={`px-2 py-1 rounded transition text-[11px] flex items-center gap-0.5 border font-bold ${
                               isBundleRow
                                 ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
                                 : 'bg-gray-100 hover:bg-gray-200 border-gray-300 text-gray-600'
@@ -1449,9 +1487,10 @@ export default function StockManagement({ user }) {
                             title={isBundleRow ? `ไปแก้ที่สินค้าหลัก: ${bundlePrimaryName}` : 'แก้สต๊อก'}
                           >
                             <Icon icon="fa-box" />
-                            แก้สต็อก
+                            <span className="hidden xl:inline">สต็อก</span>
                           </button>
                           <button
+                            type="button"
                             onClick={() => {
                               if (isBundleRow) {
                                 Swal.fire({
@@ -1463,7 +1502,7 @@ export default function StockManagement({ user }) {
                               }
                               handleRestock(product)
                             }}
-                            className={`p-2 rounded transition text-xs flex items-center gap-1 font-bold ${
+                            className={`px-2 py-1 rounded transition text-[11px] flex items-center gap-0.5 font-bold ${
                               isBundleRow
                                 ? 'bg-gray-300 text-white cursor-not-allowed'
                                 : 'bg-green-600 text-white hover:bg-green-700'
@@ -1471,7 +1510,7 @@ export default function StockManagement({ user }) {
                             title={isBundleRow ? `ไปแก้ที่สินค้าหลัก: ${bundlePrimaryName}` : 'เติมของ'}
                           >
                             <Icon icon="fa-plus" />
-                            เติมของ
+                            <span className="hidden xl:inline">เติม</span>
                           </button>
                         </div>
                       </td>
@@ -1482,64 +1521,68 @@ export default function StockManagement({ user }) {
             </div>
 
             {totalPages > 1 && (
-              <div className="mt-4 flex justify-center">
-                <div className="flex gap-2">
+              <div className="shrink-0 mt-2 flex justify-center items-center gap-2 text-sm">
                   <button
+                    type="button"
                     onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
                     disabled={currentPage === 1}
-                    className="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                    className="px-2 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
                   >
                     <Icon icon="fa-chevron-left" />
                   </button>
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                    <button
-                      key={page}
-                      onClick={() => setCurrentPage(page)}
-                      className={`px-4 py-2 rounded-lg transition ${
-                        currentPage === page
-                          ? 'bg-emerald-600 text-white'
-                          : 'bg-white border border-gray-300 hover:bg-gray-50'
-                      }`}
-                    >
-                      {page}
-                    </button>
-                  ))}
+                  <span className="text-gray-600 tabular-nums">
+                    หน้า {currentPage} / {totalPages}
+                  </span>
                   <button
+                    type="button"
                     onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
                     disabled={currentPage === totalPages}
-                    className="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                    className="px-2 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
                   >
                     <Icon icon="fa-chevron-right" />
                   </button>
-                </div>
               </div>
             )}
             </>
             )}
+            </div>
           </div>
         </div>
       </div>
 
       {/* Add/Edit Product Modal */}
       {(showAddModal || showEditModal) && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-bold text-gray-900">{editingProduct ? 'แก้ไขสินค้า' : 'เพิ่มสินค้าใหม่'}</h2>
-                <button
-                  onClick={() => {
-                    setShowAddModal(false)
-                    setShowEditModal(false)
-                    setEditingProduct(null)
-                  }}
-                  className="p-2 text-gray-500 hover:text-gray-700"
-                >
-                  <Icon icon="fa-times" className="text-xl" />
-                </button>
-              </div>
+        <div
+          className={ADMIN_MODAL_OVERLAY}
+          onClick={() => {
+            setShowAddModal(false)
+            setShowEditModal(false)
+            setEditingProduct(null)
+          }}
+        >
+          <div
+            className={`${ADMIN_MODAL_PANEL} sm:max-w-2xl`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className={ADMIN_MODAL_HEADER}>
+              <h2 className="text-base font-bold text-gray-900 truncate">
+                {editingProduct ? 'แก้ไขสินค้า' : 'เพิ่มสินค้าใหม่'}
+              </h2>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddModal(false)
+                  setShowEditModal(false)
+                  setEditingProduct(null)
+                }}
+                className="shrink-0 p-1.5 text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-100"
+                aria-label="ปิด"
+              >
+                <Icon icon="fa-times" />
+              </button>
+            </div>
 
-              <div className="space-y-4">
+            <div className={`${ADMIN_MODAL_BODY} space-y-4`}>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-bold text-gray-700 mb-2">รหัสสินค้า</label>
@@ -1904,14 +1947,13 @@ export default function StockManagement({ user }) {
                     {formData.saleRestrictedToUsers && (
                       <div>
                         <label className="block text-xs font-bold text-gray-700 mb-1">
-                          Allowed emails (คั่นด้วยเว้นวรรค / บรรทัด / , )
+                          อีเมลที่เห็นสินค้านี้
                         </label>
-                        <textarea
-                          rows={3}
+                        <AllowedViewerEmailPicker
                           value={formData.allowedViewerEmailsText}
-                          onChange={(e) => setFormData({ ...formData, allowedViewerEmailsText: e.target.value })}
-                          className="w-full border border-gray-300 rounded p-2 text-xs bg-white"
-                          placeholder="a@example.com, b@example.com"
+                          onChange={(text) =>
+                            setFormData({ ...formData, allowedViewerEmailsText: text })
+                          }
                         />
                       </div>
                     )}
@@ -2099,10 +2141,13 @@ export default function StockManagement({ user }) {
                   )}
                 </div>
 
-                <div className="flex gap-4 pt-4 flex-wrap">
+            </div>
+
+            <div className={`${ADMIN_MODAL_FOOTER} flex-wrap`}>
                   {editingProduct && (
                     <>
                       <button
+                        type="button"
                         onClick={async () => {
                           const id = (formData.id || editingProduct.id || '').trim()
                           if (!id) {
@@ -2126,8 +2171,9 @@ export default function StockManagement({ user }) {
                         ดาวน์โหลด QR สินค้า
                       </button>
                       <button
+                        type="button"
                         onClick={handleDeleteProduct}
-                        className="px-6 py-3 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700 transition flex items-center gap-2"
+                        className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg font-bold hover:bg-red-700 transition flex items-center gap-2"
                       >
                         <Icon icon="fa-trash" />
                         ลบสินค้า
@@ -2135,23 +2181,23 @@ export default function StockManagement({ user }) {
                     </>
                   )}
                   <button
+                    type="button"
                     onClick={handleSaveProduct}
-                    className="flex-1 bg-emerald-600 text-white py-3 rounded-lg font-bold hover:bg-emerald-700 transition"
+                    className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg font-bold hover:bg-emerald-700 transition sm:min-w-[7rem]"
                   >
                     บันทึก
                   </button>
                   <button
+                    type="button"
                     onClick={() => {
                       setShowAddModal(false)
                       setShowEditModal(false)
                       setEditingProduct(null)
                     }}
-                    className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-bold hover:bg-gray-300 transition"
+                    className="px-4 py-2 text-sm bg-gray-200 text-gray-700 rounded-lg font-bold hover:bg-gray-300 transition sm:min-w-[7rem]"
                   >
                     ยกเลิก
                   </button>
-                </div>
-              </div>
             </div>
           </div>
         </div>
@@ -2159,8 +2205,8 @@ export default function StockManagement({ user }) {
 
       {/* Add Category Modal */}
       {isAddCategoryModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
+        <div className={ADMIN_MODAL_OVERLAY} onClick={() => { setIsAddCategoryModalOpen(false); setNewCategoryName('') }}>
+          <div className={`${ADMIN_MODAL_PANEL} sm:max-w-md`} onClick={(e) => e.stopPropagation()}>
             <div className="p-6">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-bold text-gray-900">เพิ่มหมวดหมู่ใหม่</h2>
@@ -2218,8 +2264,8 @@ export default function StockManagement({ user }) {
 
       {/* Add Supplier Modal */}
       {isAddSupplierModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
+        <div className={ADMIN_MODAL_OVERLAY} onClick={() => { setIsAddSupplierModalOpen(false); setNewSupplierName('') }}>
+          <div className={`${ADMIN_MODAL_PANEL} sm:max-w-md`} onClick={(e) => e.stopPropagation()}>
             <div className="p-6">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-bold text-gray-900">เพิ่มซัพพลายเออร์ใหม่</h2>
