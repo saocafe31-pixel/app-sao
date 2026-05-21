@@ -8,8 +8,12 @@ import { getFeaturesSettings } from '../services/shopSettingsService'
 import { invalidateByPrefix } from '../utils/cache'
 import { shippingCostForWeightGrams } from '../utils/shippingRates'
 import {
+  buildPromotionScopedCartItem,
   computePromotionMoneyDiscount,
+  getUserPromotionCustomerType,
   getPromotionPaidQty,
+  getPromotionScopedPaidQty,
+  isPromotionVisibleToCustomer,
   isPromotionWithinUsageLimits,
   isPromotionWithinValidDates
 } from '../utils/promotionUtils'
@@ -104,6 +108,7 @@ export default function Checkout({ user }) {
   const [supplierPayQrByKey, setSupplierPayQrByKey] = useState({})
   const supplierQrLoadTimeoutRef = useRef(null)
   const supplierQrLastDepsKeyRef = useRef('')
+  const customerPromotionType = getUserPromotionCustomerType(user)
 
   const getSubtotal = () => cart.reduce((sum, item) => sum + linePaidSubtotal(item), 0)
 
@@ -185,7 +190,7 @@ export default function Checkout({ user }) {
     calculateShipping()
     checkPromotions()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cart, formData.shippingMethod, features.allowPromotion, isFromPO])
+  }, [cart, formData.shippingMethod, features.allowPromotion, isFromPO, customerPromotionType])
 
   useEffect(() => {
     getFeaturesSettings().then(setFeatures)
@@ -551,6 +556,11 @@ export default function Checkout({ user }) {
           continue
         }
 
+        if (!isPromotionVisibleToCustomer(promotion, customerPromotionType)) {
+          console.log(`[PROMO CHECK] ${promotion.Name} - Hidden for customer type: ${customerPromotionType}`)
+          continue
+        }
+
         if (!isPromotionWithinUsageLimits(promotion, { userOrderRows: userPromoOrderRows })) {
           console.log(`[PROMO CHECK] ${promotion.Name} - Usage limit reached (per user or total)`)
           continue
@@ -582,6 +592,13 @@ export default function Checkout({ user }) {
           continue
         }
 
+        const promotionPaidQty = getPromotionScopedPaidQty(promotion, cartItem)
+        if (promotionPaidQty <= 0) {
+          console.log(`[PROMO CHECK] ${promotion.Name} - No promotion stock remaining`)
+          continue
+        }
+        const promotionCartItem = buildPromotionScopedCartItem(promotion, cartItem)
+
         const promoAllowedKeys = parseAllowedSupplierKeys(promotion.AllowedSupplierKeys)
         if (
           !promotionAllowedForProductSupplier({
@@ -611,7 +628,7 @@ export default function Checkout({ user }) {
           // ตรวจสอบว่ามีสินค้าในตะกร้าครบจำนวนที่ต้องซื้อ
           // สำหรับสินค้าแถม ให้ใช้เฉพาะจำนวนที่ต้องจ่าย (ไม่รวมสินค้าแถม)
           // แต่ต้องตรวจสอบว่า freeQty มาจากโปรโมชั่นนี้หรือไม่
-          const paidQty = getPromotionPaidQty(cartItem, promotion.id)
+          const paidQty = getPromotionPaidQty(promotionCartItem, promotion.id)
           
           console.log(`[PROMO CHECK] ${promotion.Name} - Product: ${promotion.ProductID}, BuyQuantity: ${buyQuantity}, Cart Qty: ${cartItem.qty}, Paid Qty: ${paidQty}, IsFree: ${cartItem.isFree}, FreeQty: ${cartItem.freeQty}, PromotionId: ${cartItem.promotionId}`)
           
@@ -667,7 +684,8 @@ export default function Checkout({ user }) {
             applicablePromotions.push({
               ...promotion,
               appliedTimes: times,
-              freeQuantity: totalFreeQty
+              freeQuantity: totalFreeQty,
+              appliedStockQty: times * buyQuantity
             })
           } catch (error) {
             console.error(`[PROMO CHECK] Error fetching product ${getProductID} for promotion:`, error)
@@ -679,13 +697,14 @@ export default function Checkout({ user }) {
           promotion.Type === 'target_unit_price' ||
           promotion.Type === 'second_item_discount'
         ) {
-          const discountAmount = computePromotionMoneyDiscount(promotion, cartItem)
+          const discountAmount = computePromotionMoneyDiscount(promotion, promotionCartItem)
           if (discountAmount > 0) {
             console.log(`[PROMO CHECK] ${promotion.Name} - APPLIED! Discount: ${discountAmount.toFixed(2)}`)
             totalPromotionDiscount += discountAmount
             applicablePromotions.push({
               ...promotion,
-              discountAmount
+              discountAmount,
+              appliedStockQty: promotionPaidQty
             })
           } else {
             console.log(`[PROMO CHECK] ${promotion.Name} - No discount calculated`)
@@ -1393,7 +1412,8 @@ export default function Checkout({ user }) {
                   id: p.id,
                   name: p.Name,
                   type: p.Type,
-                  discountAmount: p.discountAmount || 0
+                  discountAmount: p.discountAmount || 0,
+                  appliedStockQty: p.appliedStockQty || 0
                 }))
               : null,
           shippingCost: g.shippingShare,

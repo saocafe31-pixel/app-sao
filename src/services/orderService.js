@@ -559,18 +559,29 @@ export const orderService = {
           try {
             for (const promotion of orderData.promotions) {
               if (promotion.id) {
-                // Get current usage count
+                // Get current usage and promotion stock counters.
                 const { data: promotionData, error: fetchError } = await supabase
                   .from('promotions')
-                  .select('UsageCount')
+                  .select('UsageCount, PromotionStockLimit, PromotionStockUsed')
                   .eq('id', promotion.id)
                   .maybeSingle()
                 
                 if (!fetchError && promotionData) {
                   const newUsageCount = (promotionData.UsageCount || 0) + 1
+                  const stockLimit = Number(promotionData.PromotionStockLimit) || 0
+                  const stockUsed = Number(promotionData.PromotionStockUsed) || 0
+                  const appliedStockQty = Math.max(0, Math.round(Number(promotion.appliedStockQty) || 0))
+                  const newStockUsed = stockUsed + appliedStockQty
+                  const updatePayload = { UsageCount: newUsageCount }
+                  if (appliedStockQty > 0) {
+                    updatePayload.PromotionStockUsed = newStockUsed
+                  }
+                  if (stockLimit > 0 && newStockUsed >= stockLimit) {
+                    updatePayload.Status = 'inactive'
+                  }
                   const { error: updateError } = await supabase
                     .from('promotions')
-                    .update({ UsageCount: newUsageCount })
+                    .update(updatePayload)
                     .eq('id', promotion.id)
                   
                   if (updateError) {

@@ -33,6 +33,49 @@ export function isPromotionWithinValidDates(promotion, now = new Date()) {
   return true
 }
 
+export const PROMOTION_CUSTOMER_TYPE_LABELS = {
+  all: 'ทั้งหมด',
+  regular: 'ลูกค้าปกติ',
+  franchise: 'แฟรนไชส์'
+}
+
+export function normalizePromotionCustomerType(value) {
+  const raw = String(value || '').trim().toLowerCase()
+  if (raw === 'franchise') return 'franchise'
+  if (raw === 'regular' || raw === 'customer') return 'regular'
+  return 'all'
+}
+
+export function getUserPromotionCustomerType(user) {
+  const raw = String(user?.userType || user?.customerType || '').trim().toLowerCase()
+  return raw === 'franchise' ? 'franchise' : 'regular'
+}
+
+export function isPromotionVisibleToCustomer(promotion, customerType) {
+  const scope = normalizePromotionCustomerType(promotion?.CustomerTypeScope)
+  if (scope === 'all') return true
+  return scope === getUserPromotionCustomerType({ userType: customerType })
+}
+
+export function getPromotionStockRemaining(promotion, cartItem) {
+  const limit = Number(promotion?.PromotionStockLimit) || 0
+  if (limit > 0) {
+    const used = Number(promotion?.PromotionStockUsed) || 0
+    return Math.max(0, limit - used)
+  }
+
+  const stock = Number(cartItem?.stock ?? cartItem?.Stock)
+  if (Number.isFinite(stock)) return Math.max(0, stock)
+  return Infinity
+}
+
+export function getPromotionScopedPaidQty(promotion, cartItem) {
+  const paidQty = getPromotionPaidQty(cartItem, promotion?.id)
+  const remaining = getPromotionStockRemaining(promotion, cartItem)
+  if (!Number.isFinite(remaining)) return paidQty
+  return Math.max(0, Math.min(paidQty, Math.floor(remaining)))
+}
+
 /** สรุปเงื่อนไขสำหรับแสดงในตารางแอดมิน */
 export function formatPromotionCondition(promotion) {
   const type = promotion.Type || ''
@@ -63,6 +106,16 @@ export function formatPromotionCondition(promotion) {
   }
   if (Number(promotion.MinPurchase) > 0) {
     lines.push(`ยอดตะกร้าขั้นต่ำ ฿${Number(promotion.MinPurchase).toLocaleString()}`)
+  }
+  if (promotion.CustomerTypeScope && promotion.CustomerTypeScope !== 'all') {
+    lines.push(`เฉพาะ${PROMOTION_CUSTOMER_TYPE_LABELS[promotion.CustomerTypeScope] || promotion.CustomerTypeScope}`)
+  }
+  if (Number(promotion.PromotionStockLimit) > 0) {
+    const used = Number(promotion.PromotionStockUsed || 0)
+    const limit = Number(promotion.PromotionStockLimit)
+    lines.push(`โควตาสินค้าโปร ${used.toLocaleString()}/${limit.toLocaleString()} ชิ้น`)
+  } else {
+    lines.push('โควตาสินค้าโปร: ตามสต๊อกจริง')
   }
   return lines
 }
@@ -167,6 +220,16 @@ export function isPromotionWithinUsageLimits(promotion, { userOrderRows = [] } =
   }
 
   return true
+}
+
+export function buildPromotionScopedCartItem(promotion, cartItem) {
+  const scopedQty = getPromotionScopedPaidQty(promotion, cartItem)
+  return {
+    ...cartItem,
+    qty: scopedQty,
+    isFree: false,
+    freeQty: 0
+  }
 }
 
 export const PROMOTION_TYPE_LABELS = {

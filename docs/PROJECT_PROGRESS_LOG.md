@@ -26,6 +26,19 @@
 
 ## Change Entries
 
+### [2026-05-21] โปรโมชั่น — จำกัดผู้เห็นโปรตามประเภทลูกค้า + โควตาจำนวนสินค้า
+- scope: promotions, checkout, schema
+- files: `supabase/migrations/20260521101000_promotion_visibility_inventory_limits.sql`, `src/utils/promotionUtils.js`, `src/utils/promotionUtils.test.js`, `src/pages/AdminPromotions.jsx`, `src/pages/Checkout.jsx`, `src/services/orderService.js`
+- summary:
+  - เพิ่ม `CustomerTypeScope` ให้โปรเลือกได้ว่าเห็น/ใช้ได้สำหรับ `ทั้งหมด`, `ลูกค้าปกติ`, หรือ `แฟรนไชส์`
+  - เพิ่ม `PromotionStockLimit` และ `PromotionStockUsed` สำหรับโควตาจำนวนสินค้า X ที่จัดโปร; ถ้า limit = 0 จะอิงสต๊อกจริง
+  - Checkout จำกัดจำนวนสินค้าที่ได้โปรตามโควตาที่เหลือ และส่ง `appliedStockQty` ให้ order service นับหลังสั่งซื้อ
+  - เมื่อ `PromotionStockUsed` ครบ `PromotionStockLimit` ระบบอัปเดตโปรเป็น `inactive` อัตโนมัติ
+- impact: admin คุมกลุ่มลูกค้าที่เห็นโปรและจำนวนสินค้าที่ร่วมโปรได้; ลดความเสี่ยงโปรเกินโควตาหรือแสดงผิดกลุ่ม
+- verification: `npm run test -- --run src/utils/promotionUtils.test.js`; `npm run build`; `ReadLints` ไม่มี error ในไฟล์ที่แก้
+- rollback: revert commit; ถ้ารัน migration แล้วให้ drop columns/constraints/index ของ `CustomerTypeScope`, `PromotionStockLimit`, `PromotionStockUsed`
+- next step: รัน migration `20260521101000_promotion_visibility_inventory_limits.sql` บน Supabase ก่อนใช้งานจริง
+
 ### [2026-05-19] โปรโมชั่น — ชิ้นที่ 2 ลดบาท/% + จำกัดการใช้ต่อคน/รวม
 - scope: promotions, checkout
 - files: `supabase/migrations/20260519130000_promotion_second_item_usage_limits.sql`, `src/utils/promotionUtils.js`, `src/utils/promotionUtils.test.js`, `src/pages/AdminPromotions.jsx`, `src/pages/Checkout.jsx`, `src/services/orderService.js`

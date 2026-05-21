@@ -10,6 +10,7 @@ import Icon from '../components/common/Icon'
 import Swal from 'sweetalert2'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import {
+  PROMOTION_CUSTOMER_TYPE_LABELS,
   PROMOTION_TYPE_LABELS,
   formatPromotionCondition,
   promotionDateInputToIsoRange
@@ -60,6 +61,8 @@ export default function AdminPromotions({ user }) {
     allowedSupplierKeys: [],
     UsageLimit: 0,
     TotalUsageLimit: 0,
+    CustomerTypeScope: 'all',
+    PromotionStockLimit: 0,
     secondItemDiscountMode: 'percent'
   })
 
@@ -158,6 +161,8 @@ export default function AdminPromotions({ user }) {
       allowedSupplierKeys: [],
       UsageLimit: 0,
       TotalUsageLimit: 0,
+      CustomerTypeScope: 'all',
+      PromotionStockLimit: 0,
       secondItemDiscountMode: 'percent'
     })
     setShowModal(true)
@@ -195,6 +200,8 @@ export default function AdminPromotions({ user }) {
       allowedSupplierKeys: parseAllowedSupplierKeys(promotion.AllowedSupplierKeys) || [],
       UsageLimit: promotion.UsageLimit || 0,
       TotalUsageLimit: promotion.TotalUsageLimit || 0,
+      CustomerTypeScope: promotion.CustomerTypeScope || 'all',
+      PromotionStockLimit: promotion.PromotionStockLimit || 0,
       secondItemDiscountMode:
         promotion.Type === 'second_item_discount' && !(Number(promotion.DiscountPercentage) > 0)
           ? 'fixed'
@@ -288,6 +295,19 @@ export default function AdminPromotions({ user }) {
       }
     }
 
+    if (
+      Number(promotionForm.UsageLimit) < 0 ||
+      Number(promotionForm.TotalUsageLimit) < 0 ||
+      Number(promotionForm.PromotionStockLimit) < 0
+    ) {
+      Swal.fire({
+        icon: 'warning',
+        title: 'ข้อมูลไม่ถูกต้อง',
+        text: 'จำนวนจำกัดต้องเป็น 0 หรือมากกว่า'
+      })
+      return
+    }
+
     if (promotionForm.ValidFrom && promotionForm.ValidUntil && promotionForm.ValidFrom > promotionForm.ValidUntil) {
       Swal.fire({
         icon: 'warning',
@@ -327,6 +347,8 @@ export default function AdminPromotions({ user }) {
         Description: promotionForm.Description || '',
         UsageLimit: Number(promotionForm.UsageLimit) || 0,
         TotalUsageLimit: Number(promotionForm.TotalUsageLimit) || 0,
+        CustomerTypeScope: promotionForm.CustomerTypeScope || 'all',
+        PromotionStockLimit: Number(promotionForm.PromotionStockLimit) || 0,
         AllowedSupplierKeys:
           promotionForm.allowedSupplierKeys && promotionForm.allowedSupplierKeys.length > 0
             ? promotionForm.allowedSupplierKeys
@@ -600,12 +622,14 @@ export default function AdminPromotions({ user }) {
                       <tr>
                         <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase">ชื่อโปรโมชั่น</th>
                         <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase">Supplier</th>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase">กลุ่มลูกค้า</th>
                         <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase">ประเภท</th>
                         <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase">รหัสสินค้า</th>
                         <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase">เงื่อนไข</th>
                         <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase">วันที่เริ่มต้น</th>
                         <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase">วันที่สิ้นสุด</th>
                         <th className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase">จำนวนการใช้งาน</th>
+                        <th className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase">โควตาสินค้า</th>
                         <th className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase">สถานะ</th>
                         <th className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase">จัดการ</th>
                       </tr>
@@ -618,6 +642,10 @@ export default function AdminPromotions({ user }) {
                         const status = promotion.Status || ''
                         const description = promotion.Description || ''
                         const pScope = parseAllowedSupplierKeys(promotion.AllowedSupplierKeys)
+                        const customerScope = promotion.CustomerTypeScope || 'all'
+                        const stockLimit = Number(promotion.PromotionStockLimit) || 0
+                        const stockUsed = Number(promotion.PromotionStockUsed) || 0
+                        const stockRemaining = stockLimit > 0 ? Math.max(0, stockLimit - stockUsed) : null
                         
                         return (
                           <tr key={promotion.id} className="hover:bg-gray-50">
@@ -635,6 +663,9 @@ export default function AdminPromotions({ user }) {
                               ) : (
                                 <span className="text-gray-400">อัตโนมัติ</span>
                               )}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                              {PROMOTION_CUSTOMER_TYPE_LABELS[customerScope] || customerScope}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                               {getTypeLabel(type)}
@@ -704,6 +735,21 @@ export default function AdminPromotions({ user }) {
                               )}
                               {(promotion.UsageLimit || 0) > 0 && (
                                 <div className="text-gray-500">ต่อคน {promotion.UsageLimit} ครั้ง</div>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-center text-xs">
+                              {stockLimit > 0 ? (
+                                <>
+                                  <div className="text-sm font-semibold text-gray-900">
+                                    {stockUsed.toLocaleString()}/{stockLimit.toLocaleString()} ชิ้น
+                                  </div>
+                                  <div className="text-gray-500">เหลือ {stockRemaining.toLocaleString()} ชิ้น</div>
+                                </>
+                              ) : (
+                                <>
+                                  <div className="text-sm font-semibold text-gray-900">ตามสต๊อกจริง</div>
+                                  <div className="text-gray-500">ไม่ตั้งโควตาแยก</div>
+                                </>
                               )}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-center">
@@ -856,6 +902,44 @@ export default function AdminPromotions({ user }) {
                     {getSelectedProduct().name}
                   </p>
                 )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={MODAL_LABEL}>กลุ่มลูกค้าที่เห็นโปร</label>
+                  <select
+                    value={promotionForm.CustomerTypeScope}
+                    onChange={(e) => setPromotionForm({ ...promotionForm, CustomerTypeScope: e.target.value })}
+                    className={MODAL_INPUT}
+                  >
+                    <option value="all">ทั้งหมด</option>
+                    <option value="regular">ลูกค้าปกติ</option>
+                    <option value="franchise">แฟรนไชส์</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={MODAL_LABEL}>จำนวนสินค้าโปร (0 = ตามสต๊อก)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={promotionForm.PromotionStockLimit === 0 ? '' : promotionForm.PromotionStockLimit}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      setPromotionForm({
+                        ...promotionForm,
+                        PromotionStockLimit: v === '' ? 0 : parseInt(v, 10) || 0
+                      })
+                    }}
+                    className={MODAL_INPUT}
+                    placeholder="เช่น 100"
+                  />
+                  {getSelectedProduct() && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      สต๊อกจริงตอนนี้: {Number(getSelectedProduct().stock || 0).toLocaleString()} ชิ้น
+                    </p>
+                  )}
+                </div>
               </div>
 
               {/* Buy X Get Y Fields */}

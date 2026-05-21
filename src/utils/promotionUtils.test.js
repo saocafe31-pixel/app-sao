@@ -3,7 +3,10 @@ import {
   computePromotionMoneyDiscount,
   computeSecondItemPromotionDiscount,
   getPromotionPaidQty,
+  getPromotionScopedPaidQty,
+  getPromotionStockRemaining,
   getSecondItemDiscountUnits,
+  isPromotionVisibleToCustomer,
   isPromotionWithinUsageLimits,
   isPromotionWithinValidDates,
   parsePromotionIdsFromDiscountInfo,
@@ -60,5 +63,25 @@ describe('promotionUtils', () => {
   it('usage limits block when total cap reached', () => {
     const promo = { id: 1, TotalUsageLimit: 10, UsageCount: 10, UsageLimit: 0 }
     expect(isPromotionWithinUsageLimits(promo)).toBe(false)
+  })
+
+  it('customer type scope only allows matching customers', () => {
+    expect(isPromotionVisibleToCustomer({ CustomerTypeScope: 'franchise' }, 'franchise')).toBe(true)
+    expect(isPromotionVisibleToCustomer({ CustomerTypeScope: 'franchise' }, 'regular')).toBe(false)
+    expect(isPromotionVisibleToCustomer({ CustomerTypeScope: 'all' }, 'regular')).toBe(true)
+  })
+
+  it('promotion stock limit caps paid quantity', () => {
+    const promo = { id: 'p1', PromotionStockLimit: 5, PromotionStockUsed: 3 }
+    const item = { id: 'A1', qty: 4, stock: 10 }
+    expect(getPromotionStockRemaining(promo, item)).toBe(2)
+    expect(getPromotionScopedPaidQty(promo, item)).toBe(2)
+  })
+
+  it('zero promotion stock limit falls back to real stock', () => {
+    const promo = { id: 'p1', PromotionStockLimit: 0, PromotionStockUsed: 0 }
+    const item = { id: 'A1', qty: 4, stock: 3 }
+    expect(getPromotionStockRemaining(promo, item)).toBe(3)
+    expect(getPromotionScopedPaidQty(promo, item)).toBe(3)
   })
 })
