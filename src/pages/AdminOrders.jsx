@@ -53,6 +53,43 @@ function parseCheckoutBatchFromDiscountInfo(order) {
   return m ? m[1].trim() : ''
 }
 
+function parseOrderDiscountBreakdown(discountInfoRaw, fallbackDiscount = 0) {
+  const discountInfo = String(discountInfoRaw || '')
+  let couponDiscount = 0
+  let promotionDiscount = 0
+
+  const couponMatch = discountInfo.match(/Code:.*?\(-(\d+(?:\.\d+)?)B?\)/i)
+  if (couponMatch) couponDiscount = parseFloat(couponMatch[1]) || 0
+
+  const promotionMatch = discountInfo.match(/Promotion:\s*-?(\d+(?:\.\d+)?)B?/i)
+  if (promotionMatch) promotionDiscount = parseFloat(promotionMatch[1]) || 0
+
+  if (couponDiscount === 0 && promotionDiscount === 0) {
+    const labelledDiscountMatch = discountInfo.match(
+      /(?:^|\|)\s*(?:ส่วนลด|Discount):\s*-?(\d+(?:\.\d+)?)B?/i
+    )
+    if (labelledDiscountMatch) {
+      promotionDiscount = parseFloat(labelledDiscountMatch[1]) || 0
+    } else {
+      const amountMatch = discountInfo.match(/(?:^|\|)\s*Amount:\s*(\d+(?:\.\d+)?)/i)
+      if (amountMatch) {
+        if (discountInfo.includes('Code:')) couponDiscount = parseFloat(amountMatch[1]) || 0
+        else promotionDiscount = parseFloat(amountMatch[1]) || 0
+      } else {
+        const totalDiscount = Number(fallbackDiscount || 0)
+        if (discountInfo.includes('Code:')) couponDiscount = totalDiscount
+        else if (totalDiscount > 0) promotionDiscount = totalDiscount
+      }
+    }
+  }
+
+  return {
+    couponDiscount,
+    promotionDiscount,
+    totalDiscount: couponDiscount + promotionDiscount
+  }
+}
+
 export default function AdminOrders({ user }) {
   // Helper function to handle number input - removes leading zero when user starts typing
   const handleNumberInput = (value, isFloat = false) => {
@@ -796,22 +833,10 @@ export default function AdminOrders({ user }) {
         const paidQty = Math.max(0, (item.qty || 0) - freeQty)
         return sum + (item.price || 0) * paidQty
       }, 0)
-      let oldDiscount = 0
-      // Try to get discount from DiscountInfo (format: "-XXXB" or "Code: XXX, Amount: YYY")
-      // Note: oldDiscountInfo is already declared above
-      const oldDiscountMatch = oldDiscountInfo.match(/-(\d+)B/)
-      if (oldDiscountMatch) {
-        oldDiscount = parseInt(oldDiscountMatch[1])
-      } else {
-        // Try to get discount from Amount in DiscountInfo
-        const oldAmountMatch = oldDiscountInfo.match(/Amount:\s*(\d+)/i)
-        if (oldAmountMatch) {
-          oldDiscount = parseInt(oldAmountMatch[1])
-        } else {
-          // Fallback to Discount column
-          oldDiscount = Number(editingOrder.Discount || editingOrder.discount || 0)
-        }
-      }
+      const oldDiscount = parseOrderDiscountBreakdown(
+        oldDiscountInfo,
+        editingOrder.Discount || editingOrder.discount || 0
+      ).totalDiscount
       const oldShipping = Number(editingOrder['Shipping Cost'] || editingOrder.ShippingCost || editingOrder.Shipping || 0)
       const oldTotal = oldSubtotal - oldDiscount + oldShipping
       
@@ -1354,47 +1379,9 @@ export default function AdminOrders({ user }) {
           return sum + (Number(item.price || 0) * paidQty)
         }, 0)
         
-        // Parse coupon discount
-        let couponDiscount = 0
-        const couponMatch = discountInfo.match(/Code:.*?\(-(\d+(?:\.\d+)?)B?\)/i)
-        if (couponMatch) {
-          couponDiscount = parseFloat(couponMatch[1])
-        }
-        
-        // Parse promotion discount
-        let promotionDiscount = 0
-        const promotionMatch = discountInfo.match(/Promotion:\s*-?(\d+(?:\.\d+)?)B?/i)
-        if (promotionMatch) {
-          promotionDiscount = parseFloat(promotionMatch[1])
-        }
-        
-        // If no specific format found, try to parse from DiscountInfo or Discount column
-        if (couponDiscount === 0 && promotionDiscount === 0) {
-          const match = discountInfo.match(/-(\d+(?:\.\d+)?)B/)
-          if (match) {
-            if (discountInfo.includes('Code:')) {
-              couponDiscount = parseFloat(match[1])
-            } else {
-              promotionDiscount = parseFloat(match[1])
-            }
-          } else {
-            const amountMatch = discountInfo.match(/Amount:\s*(\d+(?:\.\d+)?)/i)
-            if (amountMatch) {
-              if (discountInfo.includes('Code:')) {
-                couponDiscount = parseFloat(amountMatch[1])
-              } else {
-                promotionDiscount = parseFloat(amountMatch[1])
-              }
-            } else {
-              const totalDiscount = Number(order.Discount || order.discount || 0)
-              if (discountInfo.includes('Code:')) {
-                couponDiscount = totalDiscount
-              } else if (totalDiscount > 0) {
-                promotionDiscount = totalDiscount
-              }
-            }
-          }
-        }
+        const parsedDiscount = parseOrderDiscountBreakdown(discountInfo, order.Discount || order.discount || 0)
+        const couponDiscount = parsedDiscount.couponDiscount
+        const promotionDiscount = parsedDiscount.promotionDiscount
         
         // Calculate free items value (มูลค่าสินค้าแถม)
         let freeItemsValue = 0
@@ -1473,47 +1460,9 @@ export default function AdminOrders({ user }) {
         return sum + (Number(item.price || 0) * paidQty)
       }, 0)
       
-      // Parse coupon discount
-      let couponDiscount = 0
-      const couponMatch = discountInfo.match(/Code:.*?\(-(\d+(?:\.\d+)?)B?\)/i)
-      if (couponMatch) {
-        couponDiscount = parseFloat(couponMatch[1])
-      }
-      
-      // Parse promotion discount
-      let promotionDiscount = 0
-      const promotionMatch = discountInfo.match(/Promotion:\s*-?(\d+(?:\.\d+)?)B?/i)
-      if (promotionMatch) {
-        promotionDiscount = parseFloat(promotionMatch[1])
-      }
-      
-      // If no specific format found, try to parse from DiscountInfo or Discount column
-      if (couponDiscount === 0 && promotionDiscount === 0) {
-        const match = discountInfo.match(/-(\d+(?:\.\d+)?)B/)
-        if (match) {
-          if (discountInfo.includes('Code:')) {
-            couponDiscount = parseFloat(match[1])
-          } else {
-            promotionDiscount = parseFloat(match[1])
-          }
-        } else {
-          const amountMatch = discountInfo.match(/Amount:\s*(\d+(?:\.\d+)?)/i)
-          if (amountMatch) {
-            if (discountInfo.includes('Code:')) {
-              couponDiscount = parseFloat(amountMatch[1])
-            } else {
-              promotionDiscount = parseFloat(amountMatch[1])
-            }
-          } else {
-            const totalDiscount = Number(order.Discount || order.discount || 0)
-            if (discountInfo.includes('Code:')) {
-              couponDiscount = totalDiscount
-            } else if (totalDiscount > 0) {
-              promotionDiscount = totalDiscount
-            }
-          }
-        }
-      }
+      const parsedDiscount = parseOrderDiscountBreakdown(discountInfo, order.Discount || order.discount || 0)
+      const couponDiscount = parsedDiscount.couponDiscount
+      const promotionDiscount = parsedDiscount.promotionDiscount
       
       // Calculate free items value (มูลค่าสินค้าแถม)
       let freeItemsValue = 0
@@ -2180,15 +2129,10 @@ export default function AdminOrders({ user }) {
                                             return sum + (Number(item.price || 0) * paidQty)
                                           }, 0)
 
-                                          let discountAmount = 0
-                                          const discountMatch = discountInfo.match(/-(\d+(?:\.\d+)?)B/)
-                                          if (discountMatch) {
-                                            discountAmount = Number(discountMatch[1]) || 0
-                                          } else {
-                                            const amountMatch = discountInfo.match(/Amount:\s*(\d+(?:\.\d+)?)/i)
-                                            if (amountMatch) discountAmount = Number(amountMatch[1]) || 0
-                                            else discountAmount = Number(order.Discount || order.discount || 0) || 0
-                                          }
+                                          const discountAmount = parseOrderDiscountBreakdown(
+                                            discountInfo,
+                                            order.Discount || order.discount || 0
+                                          ).totalDiscount
                                           const shippingAmount = Number(order['Shipping Cost'] || order.ShippingCost || order.Shipping || 0) || 0
                                           const grandTotal = subtotal - discountAmount + shippingAmount
 
@@ -2262,9 +2206,10 @@ export default function AdminOrders({ user }) {
                                 subtotal += (item.price || 0) * paidQty
                               })
                               
-                              let discount = 0
-                              const discountMatch = discountInfo.match(/-(\d+)B/)
-                              if (discountMatch) discount = parseInt(discountMatch[1])
+                              const discount = parseOrderDiscountBreakdown(
+                                discountInfo,
+                                order.Discount || order.discount || 0
+                              ).totalDiscount
                               const shipping = Number(order['Shipping Cost'] || order.ShippingCost || order.Shipping || 0)
                               const calculatedTotal = subtotal - discount + shipping
                               return (

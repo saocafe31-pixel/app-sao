@@ -26,6 +26,17 @@
 
 ## Change Entries
 
+### [2026-05-27] Admin Orders — แก้ส่วนลดหลอกจาก Batch ID
+- scope: admin-orders, display
+- files: `src/pages/AdminOrders.jsx`
+- summary:
+  - เพิ่ม parser ส่วนลดที่อ่านเฉพาะ `Code:`, `Promotion:`, `ส่วนลด:`, `Discount:`, หรือ `Amount:` แบบมี label
+  - เลิกใช้ regex กว้าง `-(ตัวเลข)B` ที่ไปจับ `Batch: ...-7BYKTE` แล้วแสดงเป็นส่วนลดผิด
+- impact: หน้าออเดอร์/รายละเอียด/ใบกำกับภาษีไม่แสดงส่วนลดหลอกจากรหัส Batch; ออเดอร์ `BATCH1779854301697-7BYKTE` จะไม่ขึ้นส่วนลด `7` บาทถ้า DB ไม่มีส่วนลดจริง
+- verification: ตรวจ INSERT ที่มี `Discount=0` และ `DiscountInfo` ไม่มี `Promotion:`/`Code:`; `npm run build`; `ReadLints` ไม่มี error ใน `AdminOrders.jsx`
+- rollback: revert การเปลี่ยน `parseOrderDiscountBreakdown` ใน `src/pages/AdminOrders.jsx`
+- next step: —
+
 ### [2026-05-21] โปรโมชั่น — จำกัดผู้เห็นโปรตามประเภทลูกค้า + โควตาจำนวนสินค้า
 - scope: promotions, checkout, schema
 - files: `supabase/migrations/20260521101000_promotion_visibility_inventory_limits.sql`, `src/utils/promotionUtils.js`, `src/utils/promotionUtils.test.js`, `src/pages/AdminPromotions.jsx`, `src/pages/Checkout.jsx`, `src/services/orderService.js`
