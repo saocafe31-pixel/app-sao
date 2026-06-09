@@ -57,6 +57,29 @@ export function isPromotionVisibleToCustomer(promotion, customerType) {
   return scope === getUserPromotionCustomerType({ userType: customerType })
 }
 
+export function isFreeShippingPromotion(promotion) {
+  return promotion?.Type === 'free_shipping_min_purchase'
+}
+
+export function promotionSupplierMatches(promotion, supplierKey) {
+  const allowed = Array.isArray(promotion?.__allowedSupplierKeys)
+    ? promotion.__allowedSupplierKeys
+    : null
+  if (!allowed || allowed.length === 0) return true
+  const key = String(supplierKey || '').trim()
+  return allowed.includes(key)
+}
+
+export function eligibleSubtotalForFreeShippingPromotion(cart, promotion, getSupplierKey, getLineSubtotal) {
+  const items = Array.isArray(cart) ? cart : []
+  if (!items.length) return 0
+  return items.reduce((sum, item) => {
+    const supplierKey = getSupplierKey(item)
+    if (!promotionSupplierMatches(promotion, supplierKey)) return sum
+    return sum + Math.max(0, Number(getLineSubtotal(item)) || 0)
+  }, 0)
+}
+
 export function getPromotionStockRemaining(promotion, cartItem) {
   const limit = Number(promotion?.PromotionStockLimit) || 0
   if (limit > 0) {
@@ -103,6 +126,8 @@ export function formatPromotionCondition(promotion) {
     } else {
       lines.push(`ชิ้นที่ 2,4,6… ลด ฿${Number(promotion.DiscountAmount || 0).toLocaleString()}/ชิ้น`)
     }
+  } else if (type === 'free_shipping_min_purchase') {
+    lines.push('ซื้อครบยอดที่กำหนด รับค่าจัดส่งฟรี')
   }
   if (Number(promotion.MinPurchase) > 0) {
     lines.push(`ยอดตะกร้าขั้นต่ำ ฿${Number(promotion.MinPurchase).toLocaleString()}`)
@@ -110,11 +135,11 @@ export function formatPromotionCondition(promotion) {
   if (promotion.CustomerTypeScope && promotion.CustomerTypeScope !== 'all') {
     lines.push(`เฉพาะ${PROMOTION_CUSTOMER_TYPE_LABELS[promotion.CustomerTypeScope] || promotion.CustomerTypeScope}`)
   }
-  if (Number(promotion.PromotionStockLimit) > 0) {
+  if (type !== 'free_shipping_min_purchase' && Number(promotion.PromotionStockLimit) > 0) {
     const used = Number(promotion.PromotionStockUsed || 0)
     const limit = Number(promotion.PromotionStockLimit)
     lines.push(`โควตาสินค้าโปร ${used.toLocaleString()}/${limit.toLocaleString()} ชิ้น`)
-  } else {
+  } else if (type !== 'free_shipping_min_purchase') {
     lines.push('โควตาสินค้าโปร: ตามสต๊อกจริง')
   }
   return lines
@@ -237,5 +262,6 @@ export const PROMOTION_TYPE_LABELS = {
   discount_percentage: 'ส่วนลดเปอร์เซ็นต์',
   discount_fixed: 'ส่วนลดต่อชิ้น',
   target_unit_price: 'ราคาพิเศษต่อชิ้น',
-  second_item_discount: 'ชิ้นที่ 2 ลด (บาท/%)'
+  second_item_discount: 'ชิ้นที่ 2 ลด (บาท/%)',
+  free_shipping_min_purchase: 'ซื้อครบส่งฟรี'
 }

@@ -12,9 +12,43 @@ const openPrintWindow = (content) => {
   printWindow.document.write(content)
   printWindow.document.close()
   printWindow.focus()
-  setTimeout(() => {
-    printWindow.print()
-  }, 250)
+  const printWhenReady = () => {
+    const images = Array.from(printWindow.document.images || [])
+    if (images.length === 0) {
+      printWindow.print()
+      return
+    }
+    let done = false
+    const finish = () => {
+      if (done) return
+      done = true
+      printWindow.print()
+    }
+    const waitForImages = Promise.all(
+      images.map((img) => {
+        if (img.complete) return Promise.resolve()
+        return new Promise((resolve) => {
+          img.onload = resolve
+          img.onerror = resolve
+        })
+      })
+    )
+    Promise.race([
+      waitForImages,
+      new Promise((resolve) => setTimeout(resolve, 2500))
+    ]).then(finish)
+  }
+  setTimeout(printWhenReady, 100)
+}
+
+const renderSignatureHtml = (shop) => {
+  const signatureUrl = String(shop?.signature || '').trim()
+  if (!signatureUrl) return ''
+  return `
+    <div style="position:absolute; top:25px; left:50%; transform:translateX(-50%); width:150px; height:70px; display:flex; align-items:center; justify-content:center; z-index:2;">
+      <img src="${escapeHtml(signatureUrl)}" style="max-width:100%; max-height:130%; object-fit:contain; opacity:1.0; background:transparent; padding:0 8px;" onerror="this.style.display='none';" />
+    </div>
+  `
 }
 
 // Helper function to format date
@@ -948,9 +982,7 @@ export const printService = {
       </table>
       <div style="margin-top:40px; display:flex; justify-content:flex-end; text-align:center; font-size:8pt;" class="signature-container">
         <div style="width:250px; position:relative; min-height:100px;">
-          <div style="position:absolute; top:25px; left:50%; transform:translateX(-50%); width:150px; height:70px; display:flex; align-items:center; justify-content:center; z-index:2;">
-            <img src="${shop.signature}" style="max-width:100%; max-height:130%; object-fit:contain; opacity:1.0; background:transparent; padding:0 8px;" onerror="this.style.display='none';" />
-          </div>
+          ${renderSignatureHtml(shop)}
           <div style="border-bottom:1px solid #ccc; height:25px; margin-bottom:4px; margin-top:60px; position:relative; z-index:1;"></div>
           <div style="position:relative; margin-top:4px; z-index:1; font-size:7pt;">
             ผู้มีอำนาจลงนาม (Authorized Signature)<br>ในนาม ${escapeHtml(shop.name)}

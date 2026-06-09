@@ -2,10 +2,12 @@ import { describe, it, expect } from 'vitest'
 import {
   computePromotionMoneyDiscount,
   computeSecondItemPromotionDiscount,
+  eligibleSubtotalForFreeShippingPromotion,
   getPromotionPaidQty,
   getPromotionScopedPaidQty,
   getPromotionStockRemaining,
   getSecondItemDiscountUnits,
+  isFreeShippingPromotion,
   isPromotionVisibleToCustomer,
   isPromotionWithinUsageLimits,
   isPromotionWithinValidDates,
@@ -83,5 +85,27 @@ describe('promotionUtils', () => {
     const item = { id: 'A1', qty: 4, stock: 3 }
     expect(getPromotionStockRemaining(promo, item)).toBe(3)
     expect(getPromotionScopedPaidQty(promo, item)).toBe(3)
+  })
+
+  it('free shipping promotion only counts participating supplier subtotal', () => {
+    const promo = {
+      id: 'ship1',
+      Type: 'free_shipping_min_purchase',
+      __allowedSupplierKeys: ['ส่วนกลาง']
+    }
+    const cart = [
+      { id: 'A1', supplierKey: 'ส่วนกลาง', price: 300, qty: 2 },
+      { id: 'B1', supplierKey: 'แก้วSAO CAFE', price: 900, qty: 1 }
+    ]
+
+    expect(isFreeShippingPromotion(promo)).toBe(true)
+    expect(
+      eligibleSubtotalForFreeShippingPromotion(
+        cart,
+        promo,
+        (item) => item.supplierKey,
+        (item) => item.price * item.qty
+      )
+    ).toBe(600)
   })
 })

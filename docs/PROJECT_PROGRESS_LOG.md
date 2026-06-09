@@ -26,6 +26,39 @@
 
 ## Change Entries
 
+### [2026-06-09 17:30] โปรโมชั่น — ซื้อครบยอดแล้วส่งฟรีตามซัพ
+- scope: promotions, checkout, schema
+- files: `supabase/migrations/20260609173000_promotion_free_shipping_min_purchase.sql`, `src/utils/promotionUtils.js`, `src/utils/promotionUtils.test.js`, `src/pages/AdminPromotions.jsx`, `src/pages/Checkout.jsx`
+- summary:
+  - เพิ่มประเภทโปร `free_shipping_min_purchase` สำหรับซื้อครบยอดขั้นต่ำแล้วได้รับค่าจัดส่งฟรี
+  - หน้าโปรโมชั่นเลือกซัพที่เข้าร่วมได้; ไม่เลือกซัพ = ทุกซัพในตะกร้าเข้าร่วม
+  - Checkout ตรวจยอดซื้อขั้นต่ำเฉพาะยอดสินค้าของซัพที่เข้าร่วม และหักค่าส่งเฉพาะซัพนั้นก่อนคำนวณยอดรวม/QR/ยอดชำระแยกซัพ
+- impact:
+  - user: แอดมินตั้งโปรส่งฟรีแบบระบุซัพได้ และลูกค้าเห็นยอดค่าส่งหลังหักโปรถูกต้องใน Checkout
+  - dev/agent: โปรส่งฟรีถูกแยกจากส่วนลดสินค้าเดิม ไม่ไปรบกวนการ split promotion discount ของโปรประเภทอื่น
+- verification:
+  - `npm run test:run -- src/utils/promotionUtils.test.js`
+  - `npm run build`
+  - `ReadLints` ในไฟล์ที่แก้
+- rollback:
+  - commit: N/A
+  - safe-revert: revert ไฟล์ที่ระบุด้านบน; ถ้ารัน migration แล้วให้คืน constraint `chk_promotions_type` โดยลบ `free_shipping_min_purchase` และตั้ง `ProductID` กลับเป็น NOT NULL หากไม่มีโปรระดับตะกร้าที่ต้องใช้ ProductID ว่าง
+- next:
+  - รัน migration `20260609173000_promotion_free_shipping_min_purchase.sql` บน Supabase ก่อนเปิดใช้งานจริง
+
+### [2026-05-30] Tax Invoice — แก้ลายเซ็นไม่ขึ้นในหน้าพิมพ์
+- scope: tax-invoice, print
+- files: `src/services/printService.js`, `src/utils/constants.js`
+- summary:
+  - พบว่า URL ลายเซ็น default เดิมจาก `storage.googleapis.com` ตอบ `403 Forbidden` ทำให้ `<img>` โหลดไม่ได้และถูกซ่อน
+  - เอา URL default ที่เสียออก เพื่อไม่ fallback ไปใช้รูปที่โหลดไม่ได้
+  - ปรับ `openPrintWindow` ให้รอรูปในเอกสารพิมพ์โหลดเสร็จ (หรือ timeout 2.5s) ก่อนเรียก `print()` ลดปัญหาลายเซ็น/โลโก้ยังโหลดไม่ทัน
+  - render รูปลายเซ็นเฉพาะเมื่อมี `shop.signature` จริงจาก settings
+- impact: ถ้าตั้งค่าลายเซ็น URL ที่ใช้งานได้ ใบกำกับภาษีจะแสดงลายเซ็นก่อนเปิด print dialog; ถ้ายังไม่ได้ตั้งค่าจะไม่แสดงรูปเสีย
+- verification: ตรวจ default signature URL ได้ `403 Forbidden`; `npm run build`; `ReadLints` ไม่มี error
+- rollback: revert `src/services/printService.js` และ `src/utils/constants.js`
+- next step: ตั้งค่า/อัปโหลดลายเซ็นใหม่ในหน้า `ตั้งค่าทั่วไป` เพื่อให้ `settings.shop.signature` มี URL ที่โหลดได้
+
 ### [2026-05-27] Admin Orders — แก้ส่วนลดหลอกจาก Batch ID
 - scope: admin-orders, display
 - files: `src/pages/AdminOrders.jsx`
