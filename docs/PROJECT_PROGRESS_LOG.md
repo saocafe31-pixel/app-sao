@@ -26,6 +26,117 @@
 
 ## Change Entries
 
+### [2026-06-11 00:25] Admin Reports — เพิ่ม Supplier ในชีตออเดอร์ของรายงาน Excel
+- scope: admin-reports, export, enhancement
+- files: `src/pages/AdminReports.jsx`, `src/utils/orderDetailReportExport.js`, `src/utils/orderDetailReportExport.test.js`
+- summary:
+  - ชีต "ออเดอร์" เพิ่มคอลัมน์ `Supplier` ถัดจาก `ProductID`
+  - ก่อน export จะโหลด map `ProductID -> Supplier` จากตาราง `products` แบบ paginate ทีละ 1000 แถว
+  - exporter ใช้ supplier จาก product map เป็นหลัก และ fallback จากค่า `Supplier` ในแถว/`DiscountInfo` ถ้ามี
+  - เพิ่ม unit test สำหรับการ resolve supplier จาก product map และ fallback จาก `DiscountInfo`
+- impact: เพิ่มคอลัมน์ช่วยตรวจสอบซัพพลายเออร์สินค้าในไฟล์ Excel; ไม่เปลี่ยนยอดเงินหรือข้อมูลจริงในฐานข้อมูล
+- verification: `npm run test:run -- src/utils/orderDetailReportExport.test.js` ผ่าน 11 tests, `npm run build` ผ่าน, lint สะอาด
+- rollback: revert `src/pages/AdminReports.jsx`, `src/utils/orderDetailReportExport.js`, `src/utils/orderDetailReportExport.test.js`
+- next: export ไฟล์จริงแล้วตรวจคอลัมน์ `Supplier` ในชีต "ออเดอร์" เทียบกับตารางสินค้า
+
+### [2026-06-11 00:20] Admin Reports — แก้ Username ในชีตออเดอร์ให้แสดงชื่อลูกค้า
+- scope: admin-reports, export, fix
+- files: `src/utils/orderDetailReportExport.js`, `src/utils/orderDetailReportExport.test.js`
+- summary:
+  - ชีต "ออเดอร์" เปลี่ยนการแสดงคอลัมน์ `Username` ให้ใช้ชื่อจาก `users.Username` ตาม `UserEmail` เมื่อค่า snapshot ใน `order.Username` เป็นอีเมล
+  - เพิ่ม helper `resolveCustomerNameForReport` ใช้ร่วมกับชีต "สรุปยอดซื้อลูกค้า" เพื่อให้ logic ชื่อลูกค้าตรงกัน
+  - เพิ่ม unit test ยืนยันว่า raw order row ที่ `Username` เป็นอีเมลจะถูกแทนด้วยชื่อจาก profile map
+- impact: เปลี่ยนเฉพาะค่าที่แสดงในไฟล์ Excel export; ไม่แก้ข้อมูลดิบในฐานข้อมูลและไม่กระทบยอดเงิน
+- verification: `npm run test:run -- src/utils/orderDetailReportExport.test.js` ผ่าน 10 tests, `npm run build` ผ่าน, lint สะอาด
+- rollback: revert `src/utils/orderDetailReportExport.js` และ `src/utils/orderDetailReportExport.test.js`
+- next: export ไฟล์จริงแล้วตรวจชีต "ออเดอร์" ว่าคอลัมน์ `Username` ไม่เป็นอีเมลซ้ำกับ `UserEmail`
+
+### [2026-06-11 00:15] Admin Reports — เพิ่มช่องทางชำระในสรุปรายวัน + วันที่สรุปรายวันในชีตออเดอร์
+- scope: admin-reports, export, enhancement
+- files: `src/utils/orderDetailReportExport.js`, `src/utils/orderDetailReportExport.test.js`
+- summary:
+  - ชีต "สรุปรายวัน" เพิ่มคอลัมน์ `ยอดชำระโอน (บาท)` และ `ยอดชำระเครดิต (บาท)` โดยนับยอดระดับออเดอร์ครั้งเดียวต่อ `OrderID`
+  - ชีต "ออเดอร์" เพิ่มคอลัมน์ `วันที่สรุปรายวัน` ถัดจากลำดับ เพื่อให้เทียบกลับกับชีต "สรุปรายวัน" ได้ตรงวัน
+  - วันที่สรุปรายวันใช้ `Timestamp` ของออเดอร์แปลงเป็นวันที่ท้องถิ่นรูปแบบ `YYYY-MM-DD` ซึ่งเป็นเกณฑ์เดียวกับชีตรายวัน
+- impact: เพิ่มคอลัมน์ในไฟล์ Excel export เพื่อช่วยตรวจสอบยอดรายวัน; ไม่เปลี่ยนยอดในระบบหรือหน้ารายงาน
+- verification: `npm run test:run -- src/utils/orderDetailReportExport.test.js` ผ่าน 9 tests, `npm run build` ผ่าน, lint สะอาด
+- rollback: revert `src/utils/orderDetailReportExport.js` และ `src/utils/orderDetailReportExport.test.js`
+- next: export ไฟล์จริงแล้วตรวจยอดโอน/เครดิตรายวันเทียบกับชีตออเดอร์โดยใช้คอลัมน์ `วันที่สรุปรายวัน`
+
+### [2026-06-10 23:45] Admin Reports — แก้ชื่อลูกค้าในชีตสรุปยอดซื้อลูกค้า
+- scope: admin-reports, export, fix
+- files: `src/pages/AdminReports.jsx`, `src/utils/orderDetailReportExport.js`, `src/utils/orderDetailReportExport.test.js`
+- summary:
+  - หน้า export รายงานละเอียดดึง `Username` จากตาราง `users` ตาม `UserEmail` ผ่าน `fetchUsernameByEmailMap`
+  - ชีต "สรุปยอดซื้อลูกค้า" ใช้ชื่อจาก profile ก่อน และ fallback ไปใช้ `order.Username` เฉพาะกรณีไม่ซ้ำกับอีเมล
+  - เพิ่ม unit test กรณี `order.Username` เป็นอีเมล เพื่อให้ชื่อในชีตสรุปถูกแทนด้วยชื่อจากตาราง `users`
+- impact: แก้เฉพาะชื่อแสดงผลในไฟล์ Excel; ไม่กระทบยอดเงินหรือข้อมูลดิบในชีตออเดอร์
+- verification: `npm run test:run -- src/utils/orderDetailReportExport.test.js` ผ่าน 9 tests, `npm run build` ผ่าน, lint สะอาด
+- rollback: revert `src/pages/AdminReports.jsx`, `src/utils/orderDetailReportExport.js`, `src/utils/orderDetailReportExport.test.js`
+- next: export ไฟล์จริงแล้วตรวจชีต "สรุปยอดซื้อลูกค้า" ว่าคอลัมน์ชื่อลูกค้าไม่เป็นอีเมลซ้ำ
+
+### [2026-06-10 23:40] Admin Reports — เพิ่มจำนวนการใช้โค้ด/โปรโมชั่นในชีตสรุปรวม
+- scope: admin-reports, export, enhancement
+- files: `src/utils/orderDetailReportExport.js`, `src/utils/orderDetailReportExport.test.js`
+- summary:
+  - เพิ่มแถว `จำนวนการใช้โค้ดส่วนลดรวม (ครั้ง)` และ `จำนวนการใช้โปรโมชั่นรวม (ครั้ง)` ในชีต "สรุปรวม"
+  - เพิ่มแถวจำนวนครั้งแยกตามชื่อโค้ดและชื่อโปรโมชั่น เช่น `จำนวนใช้โค้ด: SAVE50 (ครั้ง)` และ `จำนวนใช้โปรโมชั่น: ... (ครั้ง)`
+  - ยังคง dedupe ต่อ `OrderID` ก่อนนับ เพื่อไม่ให้ออเดอร์ที่มีหลายแถวสินค้านับซ้ำ
+- impact: เปลี่ยนเฉพาะข้อมูลในไฟล์ Excel export; ไม่กระทบยอดเงินใน Cart/Checkout/Order/Reports UI
+- verification: `npm run test:run -- src/utils/orderDetailReportExport.test.js` ผ่าน 8 tests, `npm run build` ผ่าน, lint สะอาด
+- rollback: revert `src/utils/orderDetailReportExport.js` และ `src/utils/orderDetailReportExport.test.js`
+- next: เปิดไฟล์ Excel จริงตรวจแถวจำนวนครั้งในชีต "สรุปรวม"
+
+### [2026-06-10 23:30] Admin Reports — เพิ่มชีตสรุปยอดรายวันในรายงาน Excel ละเอียด (ชีตที่ 5)
+- scope: admin-reports, export, feature
+- files: `src/utils/orderDetailReportExport.js`, `src/utils/orderDetailReportExport.test.js`, `src/pages/AdminReports.jsx`
+- summary:
+  - เพิ่ม `buildDailySummaryRows` สรุปยอดต่อวัน (เวลาท้องถิ่นไทย) เรียงวันที่เก่า→ใหม่
+  - ชีต "สรุปรายวัน": ลำดับ / วันที่ / จำนวนออเดอร์ / จำนวนชิ้น / ยอดสินค้า / ส่วนลด / ค่าขนส่ง / ยอดออเดอร์รวม
+  - ค่าระดับออเดอร์ (ส่วนลด/ค่าส่ง/ยอดรวม) dedupe ต่อ OrderID เหมือนชีตอื่น
+  - ปุ่ม export เปลี่ยนป้ายเป็น "ส่งออก Excel ละเอียด (5 ชีต)"
+- impact: เพิ่มชีตใหม่ในไฟล์ export — ไม่กระทบ 4 ชีตเดิมและการคำนวณยอดในแอป
+- verification: `npm run test:run -- src/utils/orderDetailReportExport.test.js` ผ่าน 8 tests (เพิ่ม test รายวัน), `npm run build` ผ่าน, lint สะอาด
+- rollback: revert 3 ไฟล์ข้างต้น (ลบ buildDailySummaryRows + บล็อกชีตที่ 5 + test)
+- next: เปิดไฟล์จริงตรวจยอดรายวันเทียบกราฟยอดขายรายวันในหน้ารายงาน
+
+### [2026-06-10 23:25] Admin Reports — เพิ่มลำดับรายการ + เส้นตาราง/สไตล์ในรายงาน Excel ละเอียด
+- scope: admin-reports, export, ui-polish
+- files: `src/utils/orderDetailReportExport.js`, `package.json`
+- summary:
+  - เพิ่มคอลัมน์ "ลำดับ" ในชีตออเดอร์ดิบ / สรุปลูกค้า / สรุปสินค้า
+  - ใส่เส้นตารางทุกเซลล์, หัวตารางตัวหนาพื้นเขียวอักษรขาว, แถวสลับสี, ตัวเลขชิดขวา + ฟอร์แมต #,##0 / #,##0.00, กำหนดความกว้างคอลัมน์
+  - สลับ dependency `xlsx` → `xlsx-js-style` (API เดียวกัน แต่รองรับ cell style; ยังโหลดแบบ dynamic import เฉพาะตอน export)
+- impact: เฉพาะรูปแบบไฟล์ Excel ที่ export — ไม่กระทบการคำนวณยอดใดๆ
+- verification: `npm run test:run -- src/utils/orderDetailReportExport.test.js` ผ่าน 7 tests, `npm run build` ผ่าน, lint สะอาด
+- rollback: revert `orderDetailReportExport.js`, `npm uninstall xlsx-js-style && npm install xlsx`
+- next: เปิดไฟล์จริงใน Excel/Google Sheets ตรวจความสวยงาม
+
+### [2026-06-10 23:10] Admin Reports — ส่งออกรายงานออเดอร์ละเอียด 4 ชีต (Excel)
+- scope: admin-reports, export, feature
+- files: `src/utils/orderDetailReportExport.js`, `src/utils/orderDetailReportExport.test.js`, `src/pages/AdminReports.jsx`, `src/services/orderService.js`, `package.json`
+- summary:
+  - เพิ่มปุ่ม "ส่งออก Excel ละเอียด (4 ชีต)" ในหน้ารายงานยอดขาย ใช้ฟิลเตอร์วันที่ + ขอบเขตออเดอร์เดียวกับหน้ารายงาน
+  - ชีต 1: แถวดิบทุกคอลัมน์จากตาราง `order` (OrderID…RecipientPhone + Status)
+  - ชีต 2: สรุปยอดซื้อต่อลูกค้า (อีเมล/ชื่อ/จำนวนออเดอร์/จำนวนชิ้น/ยอดซื้อรวม) เรียงมาก→น้อย
+  - ชีต 3: สรุปต่อสินค้า (จำนวนขาย + ยอดขาย) เรียงมาก→น้อย
+  - ชีต 4: สรุปรวม — จำนวนชิ้น, ราคารวมสินค้า, ส่วนลดแยกรายชื่อโค้ด/รายชื่อโปรโมชั่น (map จาก PromoIds), ค่าขนส่งรวม, ยอดชำระแยกเครดิต/โอน
+  - ค่าระดับออเดอร์ (Total/Discount/ค่าส่ง) ที่ DB บันทึกซ้ำทุกแถวของออเดอร์เดียวกัน ถูก dedupe ต่อ OrderID ก่อนรวมยอด
+  - เพิ่ม `orderService.getRawOrderRowsByDateRange` ดึงแถวดิบตามช่วงวันที่แบบ paginate ทีละ 1000 (เคารพ max-rows cap)
+  - เพิ่ม dependency `xlsx` (โหลดแบบ dynamic import เฉพาะตอน export)
+- impact:
+  - user: แอดมินดึงรายงานละเอียดเป็นไฟล์ Excel ชีตเดียวจบ ครบทั้งดิบและสรุป
+  - dev/agent: ฟังก์ชัน aggregate เป็น pure function มี unit test ครอบ; parser ส่วนลดไม่จับ Batch ID เป็นส่วนลด
+- verification:
+  - `npm run test:run -- src/utils/orderDetailReportExport.test.js` ผ่าน 7 tests
+  - `npm run build` ผ่าน (xlsx แยก chunk ~429KB โหลดเฉพาะตอนใช้)
+  - `ReadLints` ไม่มี error
+- rollback:
+  - commit: N/A
+  - safe-revert: ลบ 2 ไฟล์ util ใหม่, revert `AdminReports.jsx` + `orderService.js`, `npm uninstall xlsx`
+- next:
+  - ตรวจไฟล์จริงกับข้อมูล production (ช่วงที่มีทั้งโค้ดและโปร) ว่าชีต 4 แยกยอดถูกต้อง
+
 ### [2026-06-10 11:25] Admin Orders — แก้โหลดออเดอร์ไม่ครบจาก Supabase max-rows cap
 - scope: admin-orders, fix
 - files: `src/pages/AdminOrders.jsx`, `src/services/orderService.js`

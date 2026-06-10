@@ -22,7 +22,8 @@
     "react-chartjs-2": "^5.3.1",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.20.0",
-    "sweetalert2": "^11.10.3"
+    "sweetalert2": "^11.10.3",
+    "xlsx-js-style": "^1.2.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",

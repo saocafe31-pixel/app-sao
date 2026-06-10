@@ -10,7 +10,12 @@ import { productService } from '../services/productService'
 import { printService } from '../services/printService'
 import { taxInvoiceService } from '../services/taxInvoiceService'
 import { supabase } from '../utils/supabase'
+import { fetchUsernameByEmailMap } from '../utils/customerProfileLookup'
 import { toYmd } from '../utils/datePresets'
+import {
+  exportOrderDetailReportXlsx,
+  isCancelledOrderRow
+} from '../utils/orderDetailReportExport'
 
 const ORDER_STATUS_SHIPPED = 'จัดส่งแล้ว'
 const ORDER_STATUS_CANCELLED = 'ยกเลิก'
@@ -65,6 +70,32 @@ function getDefaultDateRange() {
   const today = new Date()
   const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
   return { start: toYmd(firstOfMonth), end: toYmd(today) }
+}
+
+async function fetchProductSupplierMap() {
+  const map = new Map()
+  const chunkSize = 1000
+  let from = 0
+  let hasMore = true
+
+  while (hasMore) {
+    const { data, error } = await supabase
+      .from('products')
+      .select('ProductID, Supplier')
+      .range(from, from + chunkSize - 1)
+
+    if (error) throw error
+    const rows = data || []
+    rows.forEach((row) => {
+      const productId = String(row.ProductID || '').trim().toLowerCase()
+      const supplier = String(row.Supplier || '').trim()
+      if (productId && supplier) map.set(productId, supplier)
+    })
+    hasMore = rows.length === chunkSize
+    from += chunkSize
+  }
+
+  return map
 }
 
 export default function AdminReports({ user }) {
@@ -615,6 +646,83 @@ export default function AdminReports({ user }) {
     link.click()
   }
 
+  /** ส่งออกรายงานออเดอร์ละเอียด 4 ชีต (Excel) ตามฟิลเตอร์วันที่ + ขอบเขตออเดอร์ */
+  const exportDetailedOrderReport = async () => {
+    try {
+      Swal.fire({
+        title: 'กำลังเตรียมรายงาน...',
+        text: 'กำลังดึงข้อมูลออเดอร์ตามช่วงที่เลือก',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+      })
+
+      const startIso = showAllDates ? null : new Date(dateRange.start + 'T00:00:00').toISOString()
+      const endIso = showAllDates ? null : new Date(dateRange.end + 'T23:59:59.999').toISOString()
+      const rawRows = await orderService.getRawOrderRowsByDateRange({ startIso, endIso })
+
+      // ใช้ขอบเขตเดียวกับหน้ารายงาน: เฉพาะจัดส่งแล้ว หรือทุกสถานะ (ไม่รวมยกเลิก)
+      const scopedRows =
+        salesOrderScope === SALES_ORDER_SCOPE_SHIPPED
+          ? rawRows.filter((r) => String(r.Status || r.status || '').trim() === ORDER_STATUS_SHIPPED)
+          : rawRows.filter((r) => !isCancelledOrderRow(r))
+
+      if (scopedRows.length === 0) {
+        Swal.fire({
+          icon: 'warning',
+          title: 'ไม่มีข้อมูล',
+          text: 'ไม่พบออเดอร์ในช่วงเวลาและขอบเขตที่เลือก'
+        })
+        return
+      }
+
+      // แมป PromoIds → ชื่อโปรโมชั่น สำหรับชีตสรุปรวม
+      const promotionNameById = new Map()
+      try {
+        const { data: promoRows } = await supabase.from('promotions').select('id, Name')
+        ;(promoRows || []).forEach((p) => {
+          if (p?.id != null) promotionNameById.set(Number(p.id), String(p.Name || '').trim())
+        })
+      } catch (_) {
+        // ไม่มีชื่อโปร → ชีตสรุปจะแสดง "(ไม่ระบุชื่อโปรโมชั่น)"
+      }
+
+      const customerNameByEmail = await fetchUsernameByEmailMap(
+        scopedRows.map((r) => r.UserEmail || r.email || '')
+      )
+      const productSupplierById = await fetchProductSupplierMap()
+
+      const rangeLabel = showAllDates ? 'ทั้งหมด' : `${dateRange.start}_ถึง_${dateRange.end}`
+      const scopeLabel =
+        salesOrderScope === SALES_ORDER_SCOPE_SHIPPED
+          ? `เฉพาะออเดอร์ "${ORDER_STATUS_SHIPPED}"`
+          : 'ทุกสถานะ (ไม่รวมยกเลิก)'
+
+      const { fileName, orderCount } = await exportOrderDetailReportXlsx({
+        rows: scopedRows,
+        promotionNameById,
+        customerNameByEmail,
+        productSupplierById,
+        rangeLabel,
+        scopeLabel
+      })
+
+      Swal.fire({
+        icon: 'success',
+        title: 'ส่งออกรายงานแล้ว',
+        text: `${fileName} — ${orderCount.toLocaleString()} ออเดอร์ (${scopedRows.length.toLocaleString()} แถว)`,
+        timer: 3000,
+        showConfirmButton: false
+      })
+    } catch (error) {
+      console.error('Error exporting detailed order report:', error)
+      Swal.fire({
+        icon: 'error',
+        title: 'ส่งออกไม่สำเร็จ',
+        text: error.message || 'ไม่สามารถสร้างรายงานละเอียดได้'
+      })
+    }
+  }
+
   const exportTaxInvoiceReport = () => {
     let csv = 'รายงานใบกำกับภาษี\n'
     csv += `ช่วงเวลา: ${showAllDates ? 'ทั้งหมด' : `${dateRange.start} ถึง ${dateRange.end}`}\n\n`
@@ -782,6 +890,16 @@ export default function AdminReports({ user }) {
                   onShowAllDatesChange={setShowAllDates}
                   extraButtons={
                     <div className="ml-auto flex flex-wrap items-center gap-2">
+                      {reportType === 'sales' && (
+                        <button
+                          type="button"
+                          onClick={exportDetailedOrderReport}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2"
+                        >
+                          <Icon icon="fa-file-excel" />
+                          <span>ส่งออก Excel ละเอียด (5 ชีต)</span>
+                        </button>
+                      )}
                       {reportType === 'sales' && (
                         <button
                           type="button"

@@ -303,6 +303,40 @@ export const orderService = {
     return mergeOrderPageLists(existing, incoming)
   },
 
+  /**
+   * ดึงแถวดิบทั้งหมดจากตาราง order ตามช่วงวันที่ (สำหรับรายงานละเอียด)
+   * แบ่งโหลดทีละ 1000 แถว เพราะ PostgREST จำกัดแถวต่อ request (max-rows)
+   * @param {{ startIso?: string|null, endIso?: string|null }} range — ไม่ส่ง = ทุกช่วงเวลา
+   * @returns {Promise<Array>} แถวดิบทุกคอลัมน์ เรียง Timestamp ล่าสุดก่อน
+   */
+  async getRawOrderRowsByDateRange ({ startIso = null, endIso = null } = {}) {
+    const CHUNK = 1000
+    const allRows = []
+    let from = 0
+    let remaining = true
+
+    while (remaining) {
+      let query = supabase
+        .from('order')
+        .select('*', { count: 'exact' })
+        .order('Timestamp', { ascending: false })
+        .range(from, from + CHUNK - 1)
+      if (startIso) query = query.gte('Timestamp', startIso)
+      if (endIso) query = query.lte('Timestamp', endIso)
+
+      const { data, error, count } = await query
+      if (error) throw new Error(error.message)
+
+      const rows = data || []
+      if (rows.length === 0) break
+      allRows.push(...rows)
+      from += rows.length
+      remaining = Number.isFinite(count) ? from < count : rows.length >= CHUNK
+    }
+
+    return allRows
+  },
+
   // Place order
   // Note: Order table structure is like Google Sheets - one row per item
   // Columns: OrderID, UserEmail, Username, ItemName, Qty, Price, Total, Status, SlipURL, Address, TrackingNo, Timestamp, Discount, Shipping, TotalWeight
