@@ -42,8 +42,12 @@ import {
   ADMIN_TABLE_FRAME
 } from '../utils/adminPageLayout'
 
-/** จำนวนแถวจากตาราง order ต่อการดึงหนึ่งครั้ง (หนึ่งออเดอร์มีหลายแถว) — โหลดหน้าแรกเร็วขึ้น */
-const ORDERS_ROW_CHUNK = 2000
+/**
+ * จำนวนแถวจากตาราง order ต่อการดึงหนึ่งครั้ง (หนึ่งออเดอร์มีหลายแถว) — โหลดหน้าแรกเร็วขึ้น
+ * ห้ามเกิน 1000: PostgREST/Supabase ตัดผลลัพธ์ที่ 1000 แถวต่อ request (max-rows)
+ * ถ้าตั้งมากกว่านั้นจะได้แถวไม่ครบและระบบเข้าใจผิดว่าโหลดหมดแล้ว
+ */
+const ORDERS_ROW_CHUNK = 1000
 
 /** ดึงรหัสชุดชำระจาก DiscountInfo (รูปแบบ `Batch: …` ที่ Checkout ส่งผ่าน orderService) */
 function parseCheckoutBatchFromDiscountInfo(order) {
@@ -108,6 +112,7 @@ export default function AdminOrders({ user }) {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
+  const [loadingAllOrders, setLoadingAllOrders] = useState(false)
   const [hasMoreOrders, setHasMoreOrders] = useState(false)
   const [nextRowOffset, setNextRowOffset] = useState(0)
   const [statusFilter, setStatusFilter] = useState('All')
@@ -213,7 +218,8 @@ export default function AdminOrders({ user }) {
     try {
       const from = append ? nextRowOffset : 0
       const to = from + ORDERS_ROW_CHUNK - 1
-      const { orders: pageOrders, rawRowCount } = await orderService.getOrderRowsRange(from, to)
+      const { orders: pageOrders, rawRowCount, totalRowCount } =
+        await orderService.getOrderRowsRange(from, to)
 
       setOrders((prev) => {
         if (!append) return pageOrders
@@ -222,7 +228,11 @@ export default function AdminOrders({ user }) {
 
       const newOffset = from + rawRowCount
       setNextRowOffset(newOffset)
-      setHasMoreOrders(rawRowCount >= ORDERS_ROW_CHUNK)
+      // เทียบกับจำนวนแถวจริงทั้งตาราง (count exact) — เชื่อถือได้กว่าเทียบกับขนาด chunk
+      // เพราะ Supabase อาจส่งแถวกลับน้อยกว่าที่ขอ (max-rows cap)
+      setHasMoreOrders(
+        totalRowCount != null ? newOffset < totalRowCount : rawRowCount >= ORDERS_ROW_CHUNK
+      )
 
       await applyTaxRecordedForOrderIds(pageOrders, append)
 
@@ -244,6 +254,57 @@ export default function AdminOrders({ user }) {
     if (!hasMoreOrders || loadingMore || loading) return
     fetchOrders({ append: true })
   }
+
+  const loadAllRemainingOrders = async () => {
+    if (!hasMoreOrders || loading || loadingMore || loadingAllOrders) return
+    setLoadingAllOrders(true)
+    try {
+      let from = nextRowOffset
+      let remaining = true
+      let loadedAny = false
+
+      while (remaining) {
+        const to = from + ORDERS_ROW_CHUNK - 1
+        const { orders: pageOrders, rawRowCount, totalRowCount } =
+          await orderService.getOrderRowsRange(from, to)
+        if (rawRowCount <= 0) {
+          remaining = false
+          break
+        }
+
+        loadedAny = true
+        setOrders((prev) => orderService.mergeGroupedOrderPages(prev, pageOrders))
+        await applyTaxRecordedForOrderIds(pageOrders, true)
+        from += rawRowCount
+        remaining = totalRowCount != null ? from < totalRowCount : rawRowCount >= ORDERS_ROW_CHUNK
+      }
+
+      setNextRowOffset(from)
+      setHasMoreOrders(remaining)
+      if (loadedAny) await fetchPackingOrderIds()
+    } catch (error) {
+      console.error('Error loading all orders for filters:', error)
+      Swal.fire({
+        icon: 'error',
+        title: 'โหลดข้อมูลไม่ครบ',
+        text: 'ไม่สามารถโหลดออเดอร์ทั้งหมดสำหรับการค้นหา/กรองได้'
+      })
+    } finally {
+      setLoadingAllOrders(false)
+    }
+  }
+
+  useEffect(() => {
+    const hasActiveFilter =
+      searchOrderId.trim() !== '' ||
+      statusFilter !== 'All' ||
+      startDate !== '' ||
+      endDate !== '' ||
+      showAllDates
+    if (!hasActiveFilter || !hasMoreOrders || loading || loadingMore || loadingAllOrders) return
+    loadAllRemainingOrders()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchOrderId, statusFilter, startDate, endDate, showAllDates, hasMoreOrders, loading, loadingMore, loadingAllOrders])
 
   const handleUpdateStatus = async (orderId, newStatus) => {
     try {
@@ -1723,7 +1784,7 @@ export default function AdminOrders({ user }) {
                 <button
                   type="button"
                   onClick={() => fetchOrders({ append: false })}
-                  disabled={loading || loadingMore}
+                  disabled={loading || loadingMore || loadingAllOrders}
                   className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-bold transition disabled:opacity-50"
                 >
                   <Icon icon="fa-sync-alt" className={`text-gray-700 ${loading && !loadingMore ? 'fa-spin' : ''}`} />
@@ -1855,19 +1916,23 @@ export default function AdminOrders({ user }) {
                 ตัวเลขในแท็บนับเฉพาะออเดอร์ที่โหลดแล้ว — โหลดเพิ่มด้านล่างหากมีออเดอร์เก่าที่ยังไม่แสดง
               </p>
             )}
-            {(hasMoreOrders || loadingMore) && (
+            {(hasMoreOrders || loadingMore || loadingAllOrders) && (
               <div className="shrink-0 mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs sm:text-sm text-amber-950">
                 <span className="min-w-0 font-medium">
-                  {loadingMore ? 'กำลังโหลดชุดถัดไป...' : `มีออเดอร์เก่ากว่านี้ในระบบ — โหลดทีละ ${ORDERS_ROW_CHUNK.toLocaleString()} แถวจากตารางคำสั่งซื้อ`}
+                  {loadingAllOrders
+                    ? 'กำลังโหลดออเดอร์ทั้งหมดเพื่อให้ผลค้นหา/ตัวกรองครบถ้วน...'
+                    : loadingMore
+                      ? 'กำลังโหลดชุดถัดไป...'
+                      : `มีออเดอร์เก่ากว่านี้ในระบบ — โหลดทีละ ${ORDERS_ROW_CHUNK.toLocaleString()} แถวจากตารางคำสั่งซื้อ`}
                 </span>
                 {hasMoreOrders && (
                   <button
                     type="button"
                     onClick={loadMoreOrders}
-                    disabled={loadingMore || loading}
+                    disabled={loadingMore || loading || loadingAllOrders}
                     className="shrink-0 rounded-lg bg-amber-600 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-amber-700 disabled:opacity-50"
                   >
-                    {loadingMore ? 'กำลังโหลด...' : 'โหลดออเดอร์เพิ่ม'}
+                    {loadingMore || loadingAllOrders ? 'กำลังโหลด...' : 'โหลดออเดอร์เพิ่ม'}
                   </button>
                 )}
               </div>

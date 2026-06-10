@@ -273,12 +273,14 @@ export const orderService = {
 
   /**
    * โหลดออเดอร์จากช่วงแถวในตาราง order (เรียง Timestamp ล่าสุดก่อน)
-   * @returns {{ orders: Array, rawRowCount: number }}
+   * หมายเหตุ: PostgREST จำกัดแถวต่อ request (max-rows ค่าเริ่มต้น 1000)
+   * จึงส่ง totalRowCount (count exact) กลับไปให้ผู้เรียกตัดสินใจว่ายังเหลือแถวอีกไหม
+   * @returns {{ orders: Array, rawRowCount: number, totalRowCount: number|null }}
    */
   async getOrderRowsRange (fromInclusive, toInclusive) {
-    const { data, error } = await supabase
+    const { data, error, count } = await supabase
       .from('order')
-      .select('*')
+      .select('*', { count: 'exact' })
       .order('Timestamp', { ascending: false })
       .range(fromInclusive, toInclusive)
 
@@ -289,7 +291,11 @@ export const orderService = {
     const ordersData = buildOrdersFromRawRows(raw)
     await enrichOrderItemsWithProductId(ordersData)
     await enrichOrdersWithCustomerDisplayNames(ordersData)
-    return { orders: ordersData, rawRowCount: raw.length }
+    return {
+      orders: ordersData,
+      rawRowCount: raw.length,
+      totalRowCount: Number.isFinite(count) ? count : null
+    }
   },
 
   /** รวมรายการจากการโหลดทีละหน้า (หน้าจัดการออเดอร์) */

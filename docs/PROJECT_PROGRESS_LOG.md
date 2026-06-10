@@ -26,6 +26,45 @@
 
 ## Change Entries
 
+### [2026-06-10 11:25] Admin Orders — แก้โหลดออเดอร์ไม่ครบจาก Supabase max-rows cap
+- scope: admin-orders, fix
+- files: `src/pages/AdminOrders.jsx`, `src/services/orderService.js`
+- summary:
+  - พบว่าออเดอร์เก่าสุดในตาราง `order` คือเดือน 04/2026 แต่หน้าออเดอร์โหลดย้อนได้แค่เดือน 05/2026
+  - สาเหตุ: โค้ดขอ `range` ครั้งละ 2,000 แถว แต่ Supabase (PostgREST `max-rows`) ตัดผลลัพธ์ที่ 1,000 แถวต่อ request — เมื่อได้ 1,000 < 2,000 ระบบเข้าใจผิดว่า "หมดแล้ว" จึงไม่โหลดต่อและไม่แสดงปุ่มโหลดเพิ่ม
+  - แก้: ลด `ORDERS_ROW_CHUNK` เป็น 1,000 และให้ `getOrderRowsRange` ส่ง `totalRowCount` (count exact) กลับมา เพื่อให้การตัดสินใจ "ยังเหลือแถวอีกไหม" เทียบจากจำนวนแถวจริงทั้งตาราง ไม่ใช่ขนาด chunk
+- impact:
+  - user: ค้นหา/กรองหน้าจัดการออเดอร์เห็นข้อมูลครบถึงออเดอร์เก่าสุดในระบบ
+  - dev/agent: ห้ามตั้ง chunk เกิน 1,000 และ pagination ใช้ count exact เป็นแหล่งความจริง
+- verification:
+  - `ReadLints` ไม่มี error ใน 2 ไฟล์ที่แก้
+  - `npm run build` ผ่าน
+  - manual: ค้นหา email ที่มีออเดอร์เดือน 04/2026 แล้วต้องเจอครบ
+- rollback:
+  - commit: N/A
+  - safe-revert: คืนค่า `ORDERS_ROW_CHUNK = 2000` และลบ `totalRowCount` ออกจาก `getOrderRowsRange` + เงื่อนไข hasMore ใน `AdminOrders.jsx`
+- next:
+  - หากออเดอร์โตมาก พิจารณา server-side search (RPC/view group ตาม OrderID)
+
+### [2026-06-10 11:15] Admin Orders — ค้นหา/กรองโหลดข้อมูลครบก่อนแสดงผล
+- scope: admin-orders, search
+- files: `src/pages/AdminOrders.jsx`
+- summary:
+  - พบว่าหน้า `จัดการออเดอร์` โหลดข้อมูลเป็น chunk ละ 2,000 แถวดิบจากตาราง `order` แล้วค้นหา/กรองจาก state ที่โหลดมาเท่านั้น
+  - เพิ่มการโหลด chunk ที่เหลืออัตโนมัติเมื่อผู้ใช้ค้นหา, เปลี่ยนสถานะ, เลือกวันที่, หรือเลือกดูทั้งหมด เพื่อให้ผลลัพธ์ไม่ถูกจำกัดเฉพาะข้อมูลชุดแรก
+  - เพิ่มข้อความแจ้งระหว่างโหลดออเดอร์ทั้งหมดสำหรับการค้นหา/กรอง
+- impact:
+  - user: ค้นหาเลขออเดอร์/ชื่อ/อีเมล และกรองสถานะ/วันที่ได้ครบขึ้น แม้ออเดอร์อยู่ในข้อมูลเก่ากว่าชุดแรก
+  - dev/agent: ยังคงโหลดหน้าแรกเร็วด้วย chunking แต่ filter active จะเติมข้อมูลให้ครบก่อนคำนวณผลลัพธ์
+- verification:
+  - `ReadLints` ใน `src/pages/AdminOrders.jsx`
+  - `npm run build`
+- rollback:
+  - commit: N/A
+  - safe-revert: revert การเพิ่ม `loadingAllOrders`, `loadAllRemainingOrders`, auto-load effect, และข้อความสถานะใน `src/pages/AdminOrders.jsx`
+- next:
+  - หากจำนวนออเดอร์โตมาก ควรพัฒนา server-side search ด้วย RPC/view ที่ group ตาม `OrderID`
+
 ### [2026-06-09 17:30] โปรโมชั่น — ซื้อครบยอดแล้วส่งฟรีตามซัพ
 - scope: promotions, checkout, schema
 - files: `supabase/migrations/20260609173000_promotion_free_shipping_min_purchase.sql`, `src/utils/promotionUtils.js`, `src/utils/promotionUtils.test.js`, `src/pages/AdminPromotions.jsx`, `src/pages/Checkout.jsx`
