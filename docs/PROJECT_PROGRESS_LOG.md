@@ -12,7 +12,7 @@
 ## Current Phase
 
 - Phase: `Stabilization + Reporting`
-- Updated At: `2026-05-11`
+- Updated At: `2026-06-12`
 - Owner: `Team + Agent`
 - Next Goal:
   - ทำให้รายงานยอดขาย/ใบกำกับภาษีครบและเชื่อมโยงกับการ export
@@ -25,6 +25,190 @@
 - [2026-05-09] ตั้งมาตรฐาน release cadence + tag format สำหรับ rollback ระดับ release
 
 ## Change Entries
+
+### [2026-06-12 10:18] Admin Reports — แก้ยอดงบกำไรขาดทุนให้ reconcile กับสูตร
+- scope: admin-reports, export, profit-loss, order-reconciliation, bugfix
+- files: `src/utils/orderDetailReportExport.js`, `src/utils/orderDetailReportExport.test.js`, `docs/PROJECT_PROGRESS_LOG.md`
+- summary:
+  - ตรวจพบว่ายอดในชีต `สรุปงบกำไรขาดทุน` ใช้ `Total` ที่บันทึกระดับออเดอร์เป็นยอดหลัก ทำให้บางช่วงเวลามีผลต่างจากสูตร `รายได้จากสินค้า - ส่วนลด/โปรโมชั่น + ค่าจัดส่ง`
+  - เปลี่ยนยอดหลักของงบกำไรขาดทุนเป็น `ยอดขายสุทธิจากสูตร (บาท)` เพื่อให้แถวรายได้/ส่วนลด/ค่าจัดส่ง reconcile กัน
+  - เพิ่มแถว `ยอดขายรวมที่บันทึกในออเดอร์ (บาท)` และ `ผลต่างยอดบันทึกกับสูตร (บาท)` เพื่อให้ตรวจสอบยอด historical `Total` ที่คลาดเคลื่อนได้
+  - เพิ่มคอลัมน์ `ยอดรวมจากสูตร` และ `ผลต่าง` ในชีต `ยอดรวมตามออเดอร์` เพื่อไล่หาออเดอร์ที่ทำให้เกิดส่วนต่าง เช่น 15 บาท
+- impact:
+  - แก้เฉพาะการคำนวณและการแสดงผล Excel detailed export ไม่เปลี่ยน schema หรือข้อมูลจริงในฐานข้อมูล
+  - งบกำไรขาดทุนจะแสดงยอดขายสุทธิที่ตรงกับสูตร ส่วนยอด `Total` เดิมยังแสดงแยกไว้เป็นหลักฐานตรวจสอบ
+  - การตรวจสอบยอดเงิน: `รายได้จากสินค้า - ส่วนลด/โปรโมชั่น + ค่าจัดส่ง` ต้องเท่ากับ `ยอดขายสุทธิจากสูตร`
+- verification:
+  - `ReadLints` ผ่านใน `src/utils/orderDetailReportExport.js`, `src/utils/orderDetailReportExport.test.js`
+  - `npm run test:run -- src/utils/orderDetailReportExport.test.js` ผ่าน 13 tests
+  - `npm run build` ผ่าน (มี warning เดิมเรื่อง Browserslist, dynamic/static import ของ `shippingReportExport.js`, และ chunk size)
+- rollback: revert `src/utils/orderDetailReportExport.js`, `src/utils/orderDetailReportExport.test.js`, และลบ entry นี้จาก `docs/PROJECT_PROGRESS_LOG.md`
+- next: export รายงาน Excel ช่วง 2026-05-01 ถึง 2026-05-31 แล้วตรวจว่า `ผลต่างยอดบันทึกกับสูตร (บาท)` เท่ากับ 15 และดูชีต `ยอดรวมตามออเดอร์` เพื่อระบุ OrderID ที่มีผลต่าง
+
+### [2026-06-12 10:06] Admin Reports — เพิ่ม Supplier ในชีตยอดรวมตามออเดอร์
+- scope: admin-reports, export, order-summary, enhancement
+- files: `src/utils/orderDetailReportExport.js`, `src/utils/orderDetailReportExport.test.js`, `docs/PROJECT_PROGRESS_LOG.md`
+- summary:
+  - เพิ่มคอลัมน์ `ซัพพลายเออร์` ในชีต `ยอดรวมตามออเดอร์`
+  - `buildOrderSummaryRows` รับ `productSupplierById` เพื่อ resolve Supplier จาก `ProductID -> Supplier`
+  - หากออเดอร์หนึ่งมีหลาย Supplier จะแสดงชื่อ Supplier แบบไม่ซ้ำและคั่นด้วย `,`
+  - อัปเดต unit test ให้ครอบคลุม Supplier ใน order summary
+- impact: เพิ่มข้อมูลประกอบในไฟล์ Excel export เท่านั้น ไม่เปลี่ยนยอดเงิน การคำนวณ หรือข้อมูลจริงในฐานข้อมูล
+- verification:
+  - `ReadLints` ผ่านใน `src/utils/orderDetailReportExport.js`, `src/utils/orderDetailReportExport.test.js`
+  - `npm run test:run -- src/utils/orderDetailReportExport.test.js` ผ่าน 13 tests
+  - `npm run build` ผ่าน (มี warning เดิมเรื่อง Browserslist, dynamic/static import ของ `shippingReportExport.js`, และ chunk size)
+- rollback: revert `src/utils/orderDetailReportExport.js`, `src/utils/orderDetailReportExport.test.js`, และลบ entry นี้จาก `docs/PROJECT_PROGRESS_LOG.md`
+- next: export Excel จริงแล้วตรวจชีต `ยอดรวมตามออเดอร์` ว่าคอลัมน์ `ซัพพลายเออร์` ตรงกับชีต `ออเดอร์`
+
+### [2026-06-12 09:44] Admin Reports — การ์ดปรับตาม Supplier filter + ชีตงบกำไรขาดทุน
+- scope: admin-reports, supplier-filter, sales-summary, export, profit-loss, enhancement
+- files: `src/pages/AdminReports.jsx`, `src/utils/orderDetailReportExport.js`, `src/utils/orderDetailReportExport.test.js`, `docs/PROJECT_PROGRESS_LOG.md`
+- summary:
+  - ปรับการ์ดรายงานยอดขายให้คำนวณตาม Supplier ที่เลือกในฟิลเตอร์หลายซัพ (`selectedReportSuppliers`)
+  - เมื่อเลือก Supplier ระบบจะกรองรายการสินค้าในออเดอร์ด้วย lookup จากสินค้า (`ProductID/ชื่อสินค้า -> Supplier`) ก่อนคำนวณยอดขาย, จำนวนออเดอร์, ยอดชำระแยกช่องทาง, สินค้าขายดี, ลูกค้า, daily sales, ต้นทุน และกำไร
+  - โหลดข้อมูลสินค้าเพียงชุดเดียวใน `fetchSalesReport` เพื่อใช้ทั้ง supplier lookup และ cost map
+  - ปรับ Supplier ว่างให้ normalize เป็น `ส่วนกลาง` เพื่อให้เลือกกรองได้
+  - เพิ่มชีต `สรุปงบกำไรขาดทุน` ใน Excel export และอัปเดตปุ่มเป็น `ส่งออก Excel ละเอียด (7 ชีต)`
+  - ชีตงบกำไรขาดทุนสรุป: รายได้จากสินค้า, ส่วนลด/โปรโมชั่น, ค่าจัดส่ง, ยอดขายรวมตามออเดอร์, ต้นทุนสินค้า, กำไรขั้นต้นก่อนค่าจัดส่ง, กำไรสุทธิ, อัตรากำไรสุทธิ
+- impact:
+  - แอดมินดูการ์ดรายงานและส่งออก Excel ตาม Supplier เดียวกันได้
+  - เพิ่มชีตช่วยตรวจงบกำไรขาดทุนจากชุดข้อมูล export เดียวกัน
+  - ไม่เปลี่ยน schema หรือข้อมูลจริงในฐานข้อมูล
+- verification:
+  - `ReadLints` ผ่านใน `src/pages/AdminReports.jsx`, `src/utils/orderDetailReportExport.js`, `src/utils/orderDetailReportExport.test.js`
+  - `npm run test:run -- src/utils/orderDetailReportExport.test.js` ผ่าน 13 tests
+  - `npm run build` ผ่าน (มี warning เดิมเรื่อง Browserslist, dynamic/static import ของ `shippingReportExport.js`, และ chunk size)
+- rollback: revert `src/pages/AdminReports.jsx`, `src/utils/orderDetailReportExport.js`, `src/utils/orderDetailReportExport.test.js`, และลบ entry นี้จาก `docs/PROJECT_PROGRESS_LOG.md`
+- next: เลือก Supplier 1-2 รายแล้วตรวจว่าการ์ดรายงาน, ชีต `สรุปงบกำไรขาดทุน`, และชีตอื่นใน Excel ใช้ขอบเขต Supplier เดียวกัน
+
+### [2026-06-12 09:37] Admin Reports — เพิ่มฟิลเตอร์ Supplier สำหรับส่งออก Excel รายละเอียด
+- scope: admin-reports, export, supplier-filter, enhancement
+- files: `src/pages/AdminReports.jsx`, `docs/PROJECT_PROGRESS_LOG.md`
+- summary:
+  - เพิ่มตัวเลือก Supplier แบบหลายรายการในหน้า `AdminReports` สำหรับปุ่ม `ส่งออก Excel ละเอียด (6 ชีต)`
+  - โหลดรายการ Supplier จากตาราง `products` แบบ paginate และให้เลือก/ล้าง/เลือกทั้งหมดได้
+  - ตอน export จะกรองแถวออเดอร์หลังเลือกช่วงวันที่และสถานะแล้ว โดยใช้ `ProductID -> Supplier` และ helper `resolveProductSupplierForReport`
+  - ถ้าไม่เลือก Supplier ใด จะส่งออกทุก Supplier ตามเดิม; ถ้าเลือกหลาย Supplier จะส่งออกเฉพาะแถวสินค้าของ Supplier เหล่านั้น
+  - เพิ่ม `ซัพพลายเออร์: ...` ใน `scopeLabel` ของชีต `สรุปรวม` เพื่อบอกขอบเขต export
+- impact:
+  - เพิ่มความสามารถในการส่งออกรายงานยอดขายตาม Supplier ได้หลาย Supplier ต่อครั้ง
+  - ตัวกรองนี้ใช้เฉพาะ Excel รายละเอียด ไม่เปลี่ยนยอดที่แสดงบนแดชบอร์ด, ไม่เปลี่ยน CSV/ใบกำกับ, ไม่เปลี่ยน schema หรือข้อมูลจริง
+- verification:
+  - `ReadLints` ผ่านใน `src/pages/AdminReports.jsx`
+  - `npm run build` ผ่าน (มี warning เดิมเรื่อง Browserslist, dynamic/static import ของ `shippingReportExport.js`, และ chunk size)
+- rollback: revert `src/pages/AdminReports.jsx` และลบ entry นี้จาก `docs/PROJECT_PROGRESS_LOG.md`
+- next: ทดลองเลือก 1-2 Supplier แล้ว export Excel ตรวจชีต `ออเดอร์`, `ยอดรวมตามออเดอร์`, และ `สรุปรวม` ว่าเหลือเฉพาะแถวสินค้าของ Supplier ที่เลือก
+
+### [2026-06-12 09:31] Admin Reports — เพิ่มช่องทางชำระในชีตยอดรวมตามออเดอร์
+- scope: admin-reports, export, order-summary, enhancement
+- files: `src/utils/orderDetailReportExport.js`, `src/utils/orderDetailReportExport.test.js`, `docs/PROJECT_PROGRESS_LOG.md`
+- summary:
+  - เพิ่มคอลัมน์ `ช่องทางชำระ` ในชีต `ยอดรวมตามออเดอร์`
+  - ค่าอ่านจาก `PaymentMethod` ระดับออเดอร์แบบนับครั้งเดียวต่อ `OrderID`
+  - แสดงผลให้อ่านง่าย: `transfer`/ค่าว่าง เป็น `โอนเงิน`, `credit` เป็น `เครดิต`, ค่าอื่นใช้ค่าดิบ
+  - อัปเดต unit test ของ `buildOrderSummaryRows` ให้ครอบคลุม `paymentMethod`
+- impact: เพิ่มข้อมูลประกอบในไฟล์ Excel export เท่านั้น ไม่เปลี่ยนยอดเงิน การคำนวณ หรือข้อมูลจริงในฐานข้อมูล
+- verification:
+  - `ReadLints` ผ่านใน `src/utils/orderDetailReportExport.js`, `src/utils/orderDetailReportExport.test.js`
+  - `npm run test:run -- src/utils/orderDetailReportExport.test.js` ผ่าน 12 tests
+  - `npm run build` ผ่าน (มี warning เดิมเรื่อง Browserslist, dynamic/static import ของ `shippingReportExport.js`, และ chunk size)
+- rollback: revert `src/utils/orderDetailReportExport.js`, `src/utils/orderDetailReportExport.test.js`, และลบ entry นี้จาก `docs/PROJECT_PROGRESS_LOG.md`
+- next: export Excel จริงแล้วตรวจชีต `ยอดรวมตามออเดอร์` ว่าคอลัมน์ `ช่องทางชำระ` ตรงกับชีต `ออเดอร์`
+
+### [2026-06-12 09:15] Admin Reports — เพิ่มชีตยอดรวมตามแต่ละออเดอร์ใน Excel export
+- scope: admin-reports, export, order-summary, enhancement
+- files: `src/utils/orderDetailReportExport.js`, `src/utils/orderDetailReportExport.test.js`, `src/pages/AdminReports.jsx`, `docs/PROJECT_PROGRESS_LOG.md`
+- summary:
+  - เพิ่มชีต `ยอดรวมตามออเดอร์` ในไฟล์ Excel รายงานละเอียด
+  - ชีตใหม่มีคอลัมน์ `เลขที่ออเดอร์`, `ยอดซื้อรวม`, `ส่วนลด/โปรโมชั่น`, `ค่าจัดส่ง`, `สรุปยอดรวมคำสั่งซื้อ`
+  - `ยอดซื้อรวม` คำนวณจากทุกรายการสินค้าในออเดอร์ (`Qty * Price`) ส่วน `ส่วนลด/โปรโมชั่น`, `ค่าจัดส่ง`, และ `สรุปยอดรวมคำสั่งซื้อ` ใช้ค่าระดับออเดอร์แบบนับครั้งเดียวต่อ `OrderID`
+  - เพิ่ม `buildOrderSummaryRows` และ unit test เพื่อกันการคูณซ้ำเมื่อ 1 ออเดอร์มีหลายแถวสินค้า
+  - อัปเดตป้ายปุ่ม export เป็น `ส่งออก Excel ละเอียด (6 ชีต)`
+- impact: เพิ่มชีตช่วยตรวจยอดรายออเดอร์ในไฟล์ export; ไม่เปลี่ยนยอดเงินใน Cart/Checkout/Order/Reports UI และไม่เปลี่ยน schema/database
+- verification:
+  - `ReadLints` ผ่านใน `src/utils/orderDetailReportExport.js`, `src/utils/orderDetailReportExport.test.js`, `src/pages/AdminReports.jsx`
+  - `npm run test:run -- src/utils/orderDetailReportExport.test.js` ผ่าน 12 tests
+  - `npm run build` ผ่าน (มี warning เดิมเรื่อง Browserslist, dynamic/static import ของ `shippingReportExport.js`, และ chunk size)
+- rollback: revert `src/utils/orderDetailReportExport.js`, `src/utils/orderDetailReportExport.test.js`, `src/pages/AdminReports.jsx`, และลบ entry นี้จาก `docs/PROJECT_PROGRESS_LOG.md`
+- next: export Excel จริงแล้วตรวจชีต `ยอดรวมตามออเดอร์` เทียบกับชีต `ออเดอร์` และแถว `ยอดขายรวมตามออเดอร์ (บาท)` ในชีต `สรุปรวม`
+
+### [2026-06-12 09:10] Admin Reports — แก้ยอดแดชบอร์ดไม่ตรงกับ Excel export
+- scope: admin-reports, export, sales-summary, fix
+- files: `src/services/orderService.js`, `src/pages/AdminReports.jsx`, `src/utils/orderDetailReportExport.js`, `src/utils/orderDetailReportExport.test.js`, `docs/PROJECT_PROGRESS_LOG.md`
+- summary:
+  - แก้ `orderService.getAllOrders()` ให้โหลดแถวดิบจากตาราง `order` แบบ paginate ผ่าน `getRawOrderRowsByDateRange()` ก่อน group เป็นออเดอร์ เพื่อไม่โดน Supabase/PostgREST max-rows จำกัดที่ 1,000 แถวล่าสุด
+  - แก้การ filter วันที่และ daily sales ใน `AdminReports` ให้ใช้วันที่ท้องถิ่นผ่าน `toYmd(new Date(...))` แทน `toISOString().split('T')[0]` เพื่อให้ตรงกับช่วงวันที่ที่ export ใช้
+  - เพิ่มแถว `ยอดขายรวมตามออเดอร์ (บาท)` ในชีต "สรุปรวม" ของ Excel ซึ่งใช้สูตรเดียวกับการ์ด `ยอดขายรวม` บนแดชบอร์ด (sum `Total` หลัง dedupe ต่อ `OrderID`)
+  - คงแถว `ราคารวมสินค้าที่ขายได้ (บาท)` เป็นยอดสินค้า (`Qty * Price`) เพื่อแยกจากยอดออเดอร์รวมที่รวมผลของส่วนลด/ค่าส่งตาม `Total`
+- impact:
+  - แดชบอร์ดรายงานยอดขายและ export จะใช้แหล่งข้อมูลครบชุดมากขึ้น ไม่ถูกจำกัดแค่ 1,000 แถวดิบล่าสุด
+  - ลดความสับสนระหว่างยอดขายรวมตามออเดอร์กับยอดรวมสินค้าใน Excel
+  - ไม่เปลี่ยน schema หรือข้อมูลจริงในฐานข้อมูล
+- verification:
+  - `ReadLints` ผ่านใน `src/services/orderService.js`, `src/pages/AdminReports.jsx`, `src/utils/orderDetailReportExport.js`, `src/utils/orderDetailReportExport.test.js`
+  - `npm run test:run -- src/utils/orderDetailReportExport.test.js` ผ่าน 11 tests
+  - `npm run build` ผ่าน (มี warning เดิมเรื่อง dynamic/static import ของ `shippingReportExport.js` และ chunk size)
+- rollback: revert `src/services/orderService.js`, `src/pages/AdminReports.jsx`, `src/utils/orderDetailReportExport.js`, `src/utils/orderDetailReportExport.test.js`, และลบ entry นี้จาก `docs/PROJECT_PROGRESS_LOG.md`
+- next: export Excel ในช่วงเดียวกับหน้าจอ แล้วเทียบการ์ด `ยอดขายรวม` กับแถว `ยอดขายรวมตามออเดอร์ (บาท)` ในชีต "สรุปรวม"
+
+### [2026-06-11 00:49] Admin Reports — สรุปพรอมต์ฟังก์ชันส่งออก Excel รายงานละเอียดล่าสุด
+- scope: admin-reports, export, docs, handoff
+- files: `docs/PROJECT_PROGRESS_LOG.md`
+- summary:
+  - เพิ่มสรุปพรอมต์แบบคัดลอกได้สำหรับงาน "ส่งออก Excel รายงานละเอียด" ที่ทำล่าสุด
+  - ครอบคลุมงานหลัก: export Excel หลายชีต, สรุปลูกค้า, สรุปสินค้า, สรุปรวม, สรุปรายวัน, ช่องทางชำระ, จำนวนใช้โค้ด/โปรโมชั่น, ชื่อลูกค้าจาก `users`, และคอลัมน์ `Supplier`
+  - ระบุจุดที่ต้องระวังเรื่องยอดระดับออเดอร์ในตาราง `order` ที่ซ้ำทุกแถวสินค้า และต้อง dedupe ต่อ `OrderID`
+- impact: เป็นเอกสาร handoff/พรอมต์เท่านั้น ไม่กระทบโค้ด export, ยอดเงิน, schema, หรือข้อมูลจริง
+- verification: ตรวจรายการ progress log และไฟล์ที่เกี่ยวข้อง (`AdminReports`, `orderDetailReportExport`, tests, `orderService`) เพื่อสรุปพรอมต์; ไม่จำเป็นต้องรัน build เพราะแก้เอกสารอย่างเดียว
+- rollback: ลบ entry นี้ออกจาก `docs/PROJECT_PROGRESS_LOG.md`
+- next: ใช้พรอมต์ด้านล่างเมื่อต้องให้ Agent สานต่อ/ตรวจ/แก้ไขฟังก์ชันส่งออกรายงาน
+
+พรอมต์พร้อมคัดลอก:
+
+```text
+ช่วยพัฒนา/ตรวจสอบฟังก์ชันส่งออก Excel รายงานออเดอร์ละเอียดในหน้า Admin Reports ของโปรเจกต์ SAO CAFE
+
+บริบทระบบ:
+- ตาราง `order` เก็บ 1 แถวต่อ 1 รายการสินค้า ดังนั้น 1 OrderID อาจมีหลายแถว
+- ค่าระดับออเดอร์ เช่น `Total`, `Discount`, `Shipping Cost`, `PaymentMethod`, `DiscountInfo` ถูกบันทึกซ้ำทุกแถวของ OrderID เดียวกัน
+- เวลาสรุปยอดระดับออเดอร์ต้อง dedupe ต่อ `OrderID` ก่อนรวมเสมอ เพื่อไม่ให้นับยอดซ้ำ
+- ใช้ช่วงวันที่และขอบเขตออเดอร์เดียวกับหน้า `AdminReports` (เช่น shipped only / all non-cancelled)
+
+สิ่งที่ต้องมีใน export:
+1. เพิ่ม/รักษาปุ่มส่งออก Excel รายงานละเอียดใน `src/pages/AdminReports.jsx`
+2. ใช้ utility แยกใน `src/utils/orderDetailReportExport.js` และ dynamic import Excel library เฉพาะตอน export
+3. ไฟล์ Excel ต้องมีชีตหลัก:
+   - ชีต "ออเดอร์": แถวดิบจากตาราง `order` พร้อมลำดับ, วันที่สรุปรายวัน, `Supplier`, และคอลัมน์สำคัญ เช่น `OrderID`, `UserEmail`, `Username`, `Itemname`, `Qty`, `Price`, `Total`, `Status`, `PaymentMethod`, `ProductID`
+   - ชีต "สรุปยอดซื้อลูกค้า": รวมต่อ user/email, จำนวนออเดอร์, จำนวนชิ้น, ยอดซื้อรวม เรียงยอดมากไปน้อย
+   - ชีต "สรุปสินค้า": รวมจำนวนขายและยอดขายต่อสินค้า เรียงมากไปน้อย
+   - ชีต "สรุปรวม": จำนวนออเดอร์, จำนวนชิ้น, ราคารวมสินค้า, ส่วนลดแยกโค้ด/โปรโมชั่น, จำนวนครั้งที่ใช้โค้ด/โปรโมชั่น, ค่าขนส่งรวม, ยอดชำระแยกโอน/เครดิต
+   - ชีต "สรุปรายวัน": สรุปต่อวัน (`YYYY-MM-DD`) โดยนับค่าระดับออเดอร์ครั้งเดียวต่อ `OrderID`; แยกยอดโอน/เครดิต
+4. `Username` ใน export ต้องใช้ชื่อจากตาราง `users` ตาม `UserEmail` เมื่อค่า snapshot ใน `order.Username` เป็นอีเมลหรือว่าง
+5. `Supplier` ในชีต "ออเดอร์" ต้อง resolve จาก product map (`ProductID -> Supplier`) เป็นหลัก และ fallback จาก `row.Supplier` หรือ `DiscountInfo` ถ้ามี
+6. ส่วนลดจาก `DiscountInfo` ต้อง parse โค้ด/โปรโมชั่นอย่างระวัง และห้ามจับ `Batch ID` เป็นส่วนลด
+7. ยกเลิกออเดอร์ต้องถูกกรอง/ไม่นับตาม scope รายงานปัจจุบัน
+8. ใส่ style Excel ให้ใช้งานง่าย: หัวตารางเด่น, เส้นตาราง, number format, ความกว้างคอลัมน์, และ freeze/auto filter ถ้าทำได้โดยไม่เพิ่มความเสี่ยง
+
+ไฟล์สำคัญ:
+- `src/pages/AdminReports.jsx`
+- `src/utils/orderDetailReportExport.js`
+- `src/utils/orderDetailReportExport.test.js`
+- `src/services/orderService.js`
+- `src/utils/customerProfileLookup.js`
+
+แนวทางตรวจสอบ:
+- เพิ่ม/อัปเดต unit tests ใน `src/utils/orderDetailReportExport.test.js`
+- ต้องมี test อย่างน้อยสำหรับ:
+  - dedupe `Total`, `Discount`, `Shipping Cost` ต่อ `OrderID`
+  - สรุปรายวันแยกยอดโอน/เครดิต
+  - resolve `Username` จาก profile map
+  - resolve `Supplier` จาก product map และ fallback
+  - parser ส่วนลดไม่จับ `Batch ID` เป็นส่วนลด
+- รัน `npm run test:run -- src/utils/orderDetailReportExport.test.js`
+- รัน `npm run build`
+- หลังแก้ให้บันทึก `docs/PROJECT_PROGRESS_LOG.md` พร้อม summary, impact, verification, rollback, next step
+```
 
 ### [2026-06-11 00:25] Admin Reports — เพิ่ม Supplier ในชีตออเดอร์ของรายงาน Excel
 - scope: admin-reports, export, enhancement

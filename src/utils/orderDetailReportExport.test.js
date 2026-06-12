@@ -3,6 +3,8 @@ import {
   buildCustomerSummaryRows,
   buildDailySummaryRows,
   buildOverallSummaryRows,
+  buildOrderSummaryRows,
+  buildProfitLossRows,
   buildProductSummaryRows,
   parseDiscountBreakdownForReport,
   resolveCustomerNameForReport,
@@ -143,12 +145,45 @@ describe('orderDetailReportExport', () => {
     expect(products[0].revenue).toBe(2100)
   })
 
+  it('order summary sums item revenue but dedupes order-level values per OrderID', () => {
+    const orders = buildOrderSummaryRows(sampleRows, new Map([
+      ['a001', 'ส่วนกลาง'],
+      ['a018', 'ชา/วัตถุดิบ']
+    ]))
+    expect(orders).toHaveLength(2)
+    expect(orders[0]).toEqual({
+      orderId: 'ORD-A',
+      suppliers: expect.any(Set),
+      supplier: 'ชา/วัตถุดิบ, ส่วนกลาง',
+      paymentMethod: 'transfer',
+      itemRevenue: 850,
+      discount: 50,
+      shippingCost: 210,
+      orderTotal: 760,
+      calculatedTotal: 1010,
+      totalDifference: -250
+    })
+    expect(orders[1]).toEqual({
+      orderId: 'ORD-B',
+      suppliers: expect.any(Set),
+      supplier: 'ส่วนกลาง',
+      paymentMethod: 'credit',
+      itemRevenue: 1500,
+      discount: 100,
+      shippingCost: 50,
+      orderTotal: 1450,
+      calculatedTotal: 1450,
+      totalDifference: 0
+    })
+  })
+
   it('overall summary dedupes shipping, splits discounts and payment methods', () => {
     const promoNames = new Map([[7, 'โปรลดพิเศษ']])
     const summary = buildOverallSummaryRows(sampleRows, promoNames)
     const get = (label) => summary.find((s) => s.label === label)?.amount
 
     expect(get('จำนวนออเดอร์')).toBe(2)
+    expect(get('ยอดขายรวมตามออเดอร์ (บาท)')).toBe(2210)
     expect(get('จำนวนสินค้าที่ขายได้ (ชิ้น)')).toBe(8)
     expect(get('ราคารวมสินค้าที่ขายได้ (บาท)')).toBe(2350)
     expect(get('ส่วนลดจากโค้ดรวม (บาท)')).toBe(50)
@@ -162,6 +197,27 @@ describe('orderDetailReportExport', () => {
     expect(get('ค่าขนส่งรวม (บาท)')).toBe(260) // 210 (นับครั้งเดียว) + 50
     expect(get('ยอดชำระช่องทางเครดิต (บาท)')).toBe(1450)
     expect(get('ยอดชำระช่องทางโอน (บาท)')).toBe(760)
+  })
+
+  it('profit/loss summary uses reconciled sales total plus recorded order variance', () => {
+    const rows = buildProfitLossRows(sampleRows, {
+      productCostById: new Map([
+        ['a001', 100],
+        ['a018', 80]
+      ])
+    })
+    const get = (label) => rows.find((s) => s.label === label)?.amount
+
+    expect(get('รายได้จากสินค้า (บาท)')).toBe(2350)
+    expect(get('หัก ส่วนลด/โปรโมชั่น (บาท)')).toBe(150)
+    expect(get('บวก ค่าจัดส่งรวม (บาท)')).toBe(260)
+    expect(get('ยอดขายสุทธิจากสูตร (บาท)')).toBe(2460)
+    expect(get('ยอดขายรวมที่บันทึกในออเดอร์ (บาท)')).toBe(2210)
+    expect(get('ผลต่างยอดบันทึกกับสูตร (บาท)')).toBe(-250)
+    expect(get('หัก ต้นทุนสินค้า (บาท)')).toBe(780)
+    expect(get('กำไรขั้นต้นก่อนค่าจัดส่ง (บาท)')).toBe(1420)
+    expect(get('กำไรสุทธิ (บาท)')).toBe(1420)
+    expect(get('อัตรากำไรสุทธิ (%)')).toBe(57.72)
   })
 
   it('daily summary groups by local date, dedupes order-level values, sorted ascending', () => {

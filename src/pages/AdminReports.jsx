@@ -10,11 +10,13 @@ import { productService } from '../services/productService'
 import { printService } from '../services/printService'
 import { taxInvoiceService } from '../services/taxInvoiceService'
 import { supabase } from '../utils/supabase'
+import { buildProductSupplierLookups, getItemSupplier, normalizeSupplierName } from '../utils/orderSupplierUtils'
 import { fetchUsernameByEmailMap } from '../utils/customerProfileLookup'
 import { toYmd } from '../utils/datePresets'
 import {
   exportOrderDetailReportXlsx,
-  isCancelledOrderRow
+  isCancelledOrderRow,
+  resolveProductSupplierForReport
 } from '../utils/orderDetailReportExport'
 
 const ORDER_STATUS_SHIPPED = 'จัดส่งแล้ว'
@@ -37,7 +39,7 @@ function filterOrdersByDateRange(orders, range, showAll) {
   return list.filter((order) => {
     const orderDate = order.Timestamp || order.CreatedAt || order.created_at
     if (!orderDate) return false
-    const dateStr = new Date(orderDate).toISOString().split('T')[0]
+    const dateStr = toYmd(new Date(orderDate))
     return dateStr >= range.start && dateStr <= range.end
   })
 }
@@ -53,6 +55,45 @@ function applySalesOrderScope(orders, scope) {
 function sortTopProducts(list, rankBy) {
   const key = rankBy === TOP_PRODUCTS_RANK_QTY ? 'qty' : 'revenue'
   return [...(list || [])].sort((a, b) => Number(b[key] || 0) - Number(a[key] || 0)).slice(0, 20)
+}
+
+function makeSelectedSupplierSet(selectedSuppliers) {
+  const set = new Set()
+  ;(selectedSuppliers || []).forEach((supplier) => {
+    const normalized = normalizeSupplierName(supplier)
+    if (normalized) set.add(normalized.toLowerCase())
+  })
+  return set
+}
+
+function orderItemRevenue(items) {
+  return (items || []).reduce(
+    (sum, item) => sum + (Number(item.price || 0) * Number(item.qty || 0)),
+    0
+  )
+}
+
+function filterOrdersForSupplierSelection(orders, lookups, selectedSupplierSet) {
+  if (!selectedSupplierSet || selectedSupplierSet.size === 0) return orders || []
+  return (orders || [])
+    .map((order) => {
+      const filteredItems = (order.Items || []).filter((item) => {
+        const supplier = getItemSupplier(item, lookups)
+        return selectedSupplierSet.has(normalizeSupplierName(supplier).toLowerCase())
+      })
+      if (filteredItems.length === 0) return null
+      const itemTotal = orderItemRevenue(filteredItems)
+      const discount = Number(order.Discount || order.discount || 0) || 0
+      const shipping = Number(order['Shipping Cost'] || order.ShippingCost || order.Shipping || order.shipping || 0) || 0
+      const scopedTotal = Math.max(0, itemTotal - discount + shipping)
+      return {
+        ...order,
+        Items: filteredItems,
+        Total: scopedTotal,
+        total: scopedTotal
+      }
+    })
+    .filter(Boolean)
 }
 
 function parseTaxInvoiceItems(raw) {
@@ -72,8 +113,11 @@ function getDefaultDateRange() {
   return { start: toYmd(firstOfMonth), end: toYmd(today) }
 }
 
-async function fetchProductSupplierMap() {
+async function fetchProductSupplierData() {
   const map = new Map()
+  const costById = new Map()
+  const costByName = new Map()
+  const suppliers = new Set()
   const chunkSize = 1000
   let from = 0
   let hasMore = true
@@ -81,21 +125,31 @@ async function fetchProductSupplierMap() {
   while (hasMore) {
     const { data, error } = await supabase
       .from('products')
-      .select('ProductID, Supplier')
+      .select('ProductID, ProductName, Supplier, Cost')
       .range(from, from + chunkSize - 1)
 
     if (error) throw error
     const rows = data || []
     rows.forEach((row) => {
       const productId = String(row.ProductID || '').trim().toLowerCase()
-      const supplier = String(row.Supplier || '').trim()
-      if (productId && supplier) map.set(productId, supplier)
+      const productName = String(row.ProductName || '').trim()
+      const supplier = normalizeSupplierName(row.Supplier)
+      const cost = Number(row.Cost || 0) || 0
+      if (productId) map.set(productId, supplier)
+      if (productId) costById.set(productId, cost)
+      if (productName) costByName.set(productName, cost)
+      suppliers.add(supplier)
     })
     hasMore = rows.length === chunkSize
     from += chunkSize
   }
 
-  return map
+  return {
+    map,
+    costById,
+    costByName,
+    suppliers: [...suppliers].sort((a, b) => a.localeCompare(b, 'th'))
+  }
 }
 
 export default function AdminReports({ user }) {
@@ -105,6 +159,8 @@ export default function AdminReports({ user }) {
   const [showAllDates, setShowAllDates] = useState(false)
   const [salesOrderScope, setSalesOrderScope] = useState(SALES_ORDER_SCOPE_SHIPPED)
   const [topProductsRankBy, setTopProductsRankBy] = useState(TOP_PRODUCTS_RANK_REVENUE)
+  const [reportSupplierOptions, setReportSupplierOptions] = useState([])
+  const [selectedReportSuppliers, setSelectedReportSuppliers] = useState([])
 
   // Sales Report Data
   const [salesReport, setSalesReport] = useState({
@@ -153,7 +209,24 @@ export default function AdminReports({ user }) {
     } else {
       fetchStockReport()
     }
-  }, [reportType, dateRange, showAllDates, salesOrderScope])
+  }, [reportType, dateRange, showAllDates, salesOrderScope, selectedReportSuppliers])
+
+  useEffect(() => {
+    if (reportType !== 'sales') return
+    let cancelled = false
+    fetchProductSupplierData()
+      .then(({ suppliers }) => {
+        if (cancelled) return
+        setReportSupplierOptions(suppliers)
+        setSelectedReportSuppliers((prev) => prev.filter((supplier) => suppliers.includes(supplier)))
+      })
+      .catch((error) => {
+        console.error('Error fetching report suppliers:', error)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [reportType])
 
   const topProductsDisplayed = useMemo(
     () => sortTopProducts(salesReport.productSalesList, topProductsRankBy),
@@ -165,7 +238,26 @@ export default function AdminReports({ user }) {
     try {
       const orders = await orderService.getAllOrders()
       const filteredOrders = filterOrdersByDateRange(orders, dateRange, showAllDates)
-      const reportOrders = applySalesOrderScope(filteredOrders, salesOrderScope)
+      const scopedByStatusOrders = applySalesOrderScope(filteredOrders, salesOrderScope)
+      let allProducts = []
+      let productCostById = new Map()
+      let productCostByName = new Map()
+      let supplierLookups = null
+      try {
+        allProducts = await productService.getProducts(user, 0, 10000, '')
+        supplierLookups = buildProductSupplierLookups(allProducts)
+        allProducts.forEach(product => {
+          const id = String(product.id || product.ProductID || '').trim()
+          const name = String(product.name || product.ProductName || '').trim()
+          const cost = Number(product.cost ?? product.Cost ?? 0) || 0
+          if (id) productCostById.set(id, cost)
+          if (name) productCostByName.set(name, cost)
+        })
+      } catch (error) {
+        console.error('Error loading products for sales report:', error)
+      }
+      const selectedSupplierSet = makeSelectedSupplierSet(selectedReportSuppliers)
+      const reportOrders = filterOrdersForSupplierSelection(scopedByStatusOrders, supplierLookups, selectedSupplierSet)
 
       // Tax invoices summary (บันทึก/ออกให้ลูกค้า) — อิงวันที่ใบกำกับ ไม่ผูกกับ salesOrderScope
       let taxInvoiceCount = 0
@@ -243,20 +335,13 @@ export default function AdminReports({ user }) {
       // Calculate total cost
       let totalCost = 0
       try {
-        const allProducts = await productService.getProducts(user, 0, 10000, '')
-        const productCostMap = new Map()
-        allProducts.forEach(product => {
-          if (product.name && product.cost) {
-            productCostMap.set(product.name, product.cost)
-          }
-        })
-
         reportOrders.forEach(order => {
           const items = order.Items || []
           items.forEach(item => {
-            const productName = item.name || ''
+            const productId = String(item.id || item.productId || item.ProductID || '').trim()
+            const productName = String(item.name || '').trim()
             const qty = Number(item.qty || 0)
-            const cost = productCostMap.get(productName) || 0
+            const cost = productCostById.get(productId) ?? productCostByName.get(productName) ?? 0
             totalCost += cost * qty
           })
         })
@@ -336,7 +421,8 @@ export default function AdminReports({ user }) {
       const dailySalesMap = new Map()
       reportOrders.forEach(order => {
         const orderDate = new Date(order.Timestamp || order.CreatedAt || order.created_at)
-        const dateKey = orderDate.toISOString().split('T')[0]
+        const dateKey = toYmd(orderDate)
+        if (!dateKey) return
         const current = dailySalesMap.get(dateKey) || { date: dateKey, sales: 0, orders: 0 }
         current.sales += Number(order.Total || order.total || 0)
         current.orders += 1
@@ -479,7 +565,7 @@ export default function AdminReports({ user }) {
         : deliveredOrdersAll.filter((o) => {
             const orderDate = o.Timestamp || o.CreatedAt || o.created_at
             if (!orderDate) return false
-            const dateStr = new Date(orderDate).toISOString().split('T')[0]
+            const dateStr = toYmd(new Date(orderDate))
             return dateStr >= dateRange.start && dateStr <= dateRange.end
           })
 
@@ -646,7 +732,7 @@ export default function AdminReports({ user }) {
     link.click()
   }
 
-  /** ส่งออกรายงานออเดอร์ละเอียด 4 ชีต (Excel) ตามฟิลเตอร์วันที่ + ขอบเขตออเดอร์ */
+  /** ส่งออกรายงานออเดอร์ละเอียด 7 ชีต (Excel) ตามฟิลเตอร์วันที่ + ขอบเขตออเดอร์ */
   const exportDetailedOrderReport = async () => {
     try {
       Swal.fire({
@@ -675,6 +761,30 @@ export default function AdminReports({ user }) {
         return
       }
 
+      const {
+        map: productSupplierById,
+        costById: productCostById,
+        costByName: productCostByName
+      } = await fetchProductSupplierData()
+      const selectedSupplierSet = new Set(
+        selectedReportSuppliers.map((supplier) => String(supplier || '').trim().toLowerCase()).filter(Boolean)
+      )
+      const exportRows = selectedSupplierSet.size > 0
+        ? scopedRows.filter((row) => {
+            const supplier = resolveProductSupplierForReport(row, productSupplierById).toLowerCase()
+            return selectedSupplierSet.has(supplier)
+          })
+        : scopedRows
+
+      if (exportRows.length === 0) {
+        Swal.fire({
+          icon: 'warning',
+          title: 'ไม่มีข้อมูล',
+          text: `ไม่พบรายการสินค้าในซัพพลายเออร์ที่เลือก (${selectedReportSuppliers.join(', ')}) ตามช่วงเวลาและขอบเขตออเดอร์นี้`
+        })
+        return
+      }
+
       // แมป PromoIds → ชื่อโปรโมชั่น สำหรับชีตสรุปรวม
       const promotionNameById = new Map()
       try {
@@ -687,21 +797,26 @@ export default function AdminReports({ user }) {
       }
 
       const customerNameByEmail = await fetchUsernameByEmailMap(
-        scopedRows.map((r) => r.UserEmail || r.email || '')
+        exportRows.map((r) => r.UserEmail || r.email || '')
       )
-      const productSupplierById = await fetchProductSupplierMap()
 
       const rangeLabel = showAllDates ? 'ทั้งหมด' : `${dateRange.start}_ถึง_${dateRange.end}`
+      const supplierLabel =
+        selectedReportSuppliers.length > 0
+          ? `ซัพพลายเออร์: ${selectedReportSuppliers.join(', ')}`
+          : 'ซัพพลายเออร์: ทั้งหมด'
       const scopeLabel =
         salesOrderScope === SALES_ORDER_SCOPE_SHIPPED
-          ? `เฉพาะออเดอร์ "${ORDER_STATUS_SHIPPED}"`
-          : 'ทุกสถานะ (ไม่รวมยกเลิก)'
+          ? `เฉพาะออเดอร์ "${ORDER_STATUS_SHIPPED}" · ${supplierLabel}`
+          : `ทุกสถานะ (ไม่รวมยกเลิก) · ${supplierLabel}`
 
       const { fileName, orderCount } = await exportOrderDetailReportXlsx({
-        rows: scopedRows,
+        rows: exportRows,
         promotionNameById,
         customerNameByEmail,
         productSupplierById,
+        productCostById,
+        productCostByName,
         rangeLabel,
         scopeLabel
       })
@@ -709,7 +824,7 @@ export default function AdminReports({ user }) {
       Swal.fire({
         icon: 'success',
         title: 'ส่งออกรายงานแล้ว',
-        text: `${fileName} — ${orderCount.toLocaleString()} ออเดอร์ (${scopedRows.length.toLocaleString()} แถว)`,
+        text: `${fileName} — ${orderCount.toLocaleString()} ออเดอร์ (${exportRows.length.toLocaleString()} แถว)`,
         timer: 3000,
         showConfirmButton: false
       })
@@ -879,6 +994,68 @@ export default function AdminReports({ user }) {
                     </p>
                   </div>
                 )}
+                {reportType === 'sales' && (
+                  <div className="flex flex-col gap-2 pt-2 border-t border-gray-100">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-medium text-gray-700">
+                        ซัพพลายเออร์สำหรับส่งออก Excel รายละเอียด:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedReportSuppliers(reportSupplierOptions)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200"
+                        disabled={reportSupplierOptions.length === 0}
+                      >
+                        เลือกทั้งหมด
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedReportSuppliers([])}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200"
+                        disabled={selectedReportSuppliers.length === 0}
+                      >
+                        ล้าง
+                      </button>
+                      <span className="text-xs text-gray-500">
+                        {selectedReportSuppliers.length === 0
+                          ? 'ค่าเริ่มต้น: ส่งออกทุกซัพ'
+                          : `เลือก ${selectedReportSuppliers.length} ซัพ`}
+                      </span>
+                    </div>
+                    {reportSupplierOptions.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {reportSupplierOptions.map((supplier) => {
+                          const checked = selectedReportSuppliers.includes(supplier)
+                          return (
+                            <button
+                              key={supplier}
+                              type="button"
+                              onClick={() => {
+                                setSelectedReportSuppliers((prev) =>
+                                  prev.includes(supplier)
+                                    ? prev.filter((s) => s !== supplier)
+                                    : [...prev, supplier]
+                                )
+                              }}
+                              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition ${
+                                checked
+                                  ? 'bg-emerald-600 text-white border-emerald-600'
+                                  : 'bg-white text-gray-700 border-gray-200 hover:border-emerald-300'
+                              }`}
+                            >
+                              {supplier}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-500">ยังไม่พบข้อมูล Supplier ในตารางสินค้า</p>
+                    )}
+                    <p className="text-xs text-gray-500">
+                      ตัวกรองนี้ใช้เฉพาะปุ่ม "ส่งออก Excel ละเอียด" และกรองแถวสินค้าตาม Supplier ของสินค้า
+                    </p>
+                  </div>
+                )}
                 <DateRangeFilter
                   layout="buttonsOnly"
                   labelInline
@@ -897,7 +1074,7 @@ export default function AdminReports({ user }) {
                           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2"
                         >
                           <Icon icon="fa-file-excel" />
-                          <span>ส่งออก Excel ละเอียด (5 ชีต)</span>
+                          <span>ส่งออก Excel ละเอียด (7 ชีต)</span>
                         </button>
                       )}
                       {reportType === 'sales' && (
@@ -935,6 +1112,9 @@ export default function AdminReports({ user }) {
                       : 'เฉพาะจัดส่งแล้ว'}
                   </span>
                   {showAllDates ? ' (ทุกช่วงเวลา)' : ` วันที่ ${dateRange.start} ถึง ${dateRange.end}`}
+                  {selectedReportSuppliers.length > 0
+                    ? ` · ซัพพลายเออร์: ${selectedReportSuppliers.join(', ')}`
+                    : ' · ทุกซัพพลายเออร์'}
                 </p>
                 {/* Summary Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">

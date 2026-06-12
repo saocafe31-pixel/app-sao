@@ -256,16 +256,8 @@ export const orderService = {
 
   // Get all orders (admin) — โหลดทุกแถว (ใช้รายงาน/หน้าอื่นที่ต้องการครบ)
   async getAllOrders() {
-    const { data, error } = await supabase
-      .from('order')
-      .select('*')
-      .order('Timestamp', { ascending: false })
-
-    if (error) {
-      throw new Error(error.message)
-    }
-
-    const ordersData = buildOrdersFromRawRows(data || [])
+    const rawRows = await this.getRawOrderRowsByDateRange()
+    const ordersData = buildOrdersFromRawRows(rawRows)
     await enrichOrderItemsWithProductId(ordersData)
     await enrichOrdersWithCustomerDisplayNames(ordersData)
     return ordersData
