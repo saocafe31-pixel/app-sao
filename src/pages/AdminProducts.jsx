@@ -11,6 +11,7 @@ import LoadingSpinner from '../components/common/LoadingSpinner'
 export default function AdminProducts({ user }) {
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
+  const [hasLoadedProducts, setHasLoadedProducts] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [showAddModal, setShowAddModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
@@ -50,6 +51,7 @@ export default function AdminProducts({ user }) {
       })
     } finally {
       setLoading(false)
+      setHasLoadedProducts(true)
     }
   }
 
@@ -220,7 +222,9 @@ export default function AdminProducts({ user }) {
     }
   }
 
-  if (loading && products.length === 0) {
+  const isRefreshingProducts = loading && hasLoadedProducts
+
+  if (loading && !hasLoadedProducts) {
     return <LoadingSpinner />
   }
 
@@ -256,6 +260,12 @@ export default function AdminProducts({ user }) {
                 />
                 <Icon icon="fa-search" className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
               </div>
+              {isRefreshingProducts && (
+                <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
+                  <Icon icon="fa-sync-alt" className="fa-spin" />
+                  <span>กำลังอัปเดตผลค้นหา...</span>
+                </div>
+              )}
             </div>
 
             {/* Products Table */}

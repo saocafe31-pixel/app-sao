@@ -1755,6 +1755,7 @@ export default function AdminOrders({ user }) {
   )
   const filteredOrderAvg = filteredOrderCount > 0 ? filteredOrderTotal / filteredOrderCount : 0
   const hasSearchKeyword = searchOrderId.trim() !== ''
+  const isRefreshingOrders = (loading && orders.length > 0) || loadingMore || loadingAllOrders
 
   if (loading && orders.length === 0) {
     return <LoadingSpinner />
@@ -1876,6 +1877,12 @@ export default function AdminOrders({ user }) {
                       : '—'}
                   </span>
                 </span>
+                {isRefreshingOrders && (
+                  <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-700">
+                    <Icon icon="fa-sync-alt" className="fa-spin" />
+                    กำลังอัปเดตผลค้นหา...
+                  </span>
+                )}
               </div>
             </div>
 

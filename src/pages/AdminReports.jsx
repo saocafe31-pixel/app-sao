@@ -154,6 +154,7 @@ async function fetchProductSupplierData() {
 
 export default function AdminReports({ user }) {
   const [loading, setLoading] = useState(false)
+  const [hasLoadedReport, setHasLoadedReport] = useState(false)
   const [reportType, setReportType] = useState('sales') // 'sales' or 'stock'
   const [dateRange, setDateRange] = useState(getDefaultDateRange)
   const [showAllDates, setShowAllDates] = useState(false)
@@ -459,6 +460,7 @@ export default function AdminReports({ user }) {
       })
     } finally {
       setLoading(false)
+      setHasLoadedReport(true)
     }
   }
 
@@ -640,6 +642,7 @@ export default function AdminReports({ user }) {
       })
     } finally {
       setLoading(false)
+      setHasLoadedReport(true)
     }
   }
 
@@ -903,7 +906,9 @@ export default function AdminReports({ user }) {
     link.click()
   }
 
-  if (loading) {
+  const isRefreshingReport = loading && hasLoadedReport
+
+  if (loading && !hasLoadedReport) {
     return <LoadingSpinner />
   }
 
@@ -1098,6 +1103,12 @@ export default function AdminReports({ user }) {
                     </div>
                   }
                 />
+                {isRefreshingReport && (
+                  <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
+                    <Icon icon="fa-sync-alt" className="fa-spin" />
+                    <span>กำลังอัปเดตรายงานตามฟิลเตอร์...</span>
+                  </div>
+                )}
               </div>
             </div>
 

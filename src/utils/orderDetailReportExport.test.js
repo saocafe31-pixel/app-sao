@@ -153,6 +153,9 @@ describe('orderDetailReportExport', () => {
     expect(orders).toHaveLength(2)
     expect(orders[0]).toEqual({
       orderId: 'ORD-A',
+      timestamp: '2026-06-01T10:00:00+07:00',
+      summaryDate: '2026-06-01',
+      userEmail: 'a@test.com',
       suppliers: expect.any(Set),
       supplier: 'ชา/วัตถุดิบ, ส่วนกลาง',
       paymentMethod: 'transfer',
@@ -165,6 +168,9 @@ describe('orderDetailReportExport', () => {
     })
     expect(orders[1]).toEqual({
       orderId: 'ORD-B',
+      timestamp: '2026-06-02T09:00:00+07:00',
+      summaryDate: '2026-06-02',
+      userEmail: 'b@test.com',
       suppliers: expect.any(Set),
       supplier: 'ส่วนกลาง',
       paymentMethod: 'credit',

@@ -26,6 +26,41 @@
 
 ## Change Entries
 
+### [2026-06-12 16:20] Admin UX — ปรับ filter realtime ไม่ให้ขึ้น loading screen
+- scope: admin, UX, filters, loading-state, enhancement
+- files: `src/pages/AdminDashboard.jsx`, `src/pages/AdminReports.jsx`, `src/pages/AdminOrders.jsx`, `src/pages/AdminProducts.jsx`, `docs/PROJECT_PROGRESS_LOG.md`
+- summary:
+  - แยก initial loading ออกจาก filter refresh ในหน้า `AdminDashboard` และ `AdminReports`
+  - หลังโหลดข้อมูลครั้งแรกแล้ว การเปลี่ยนฟิลเตอร์วันที่, ขอบเขตรายงาน, หรือ Supplier จะคงข้อมูลเดิมไว้บนหน้าจอและแสดงสถานะ inline แทน `LoadingSpinner` เต็มหน้า
+  - เพิ่มสถานะ inline ใน `AdminOrders` ระหว่าง refresh/load more/load all สำหรับผลค้นหาและตัวกรอง
+  - ปรับ `AdminProducts` ให้ search แบบ debounce ไม่ขึ้น loading screen เต็มหน้า แม้ผลก่อนหน้าจะเป็นศูนย์รายการ
+- impact:
+  - การค้นหา/กรองแบบ realtime ในหน้าแอดมินหลักลื่นขึ้นและไม่ตัด flow ผู้ใช้
+  - ไม่เปลี่ยนสูตรยอดเงิน, export, schema, หรือข้อมูลจริงในฐานข้อมูล
+  - ยังแสดง `LoadingSpinner` เต็มหน้าตอนเปิดหน้าครั้งแรกที่ยังไม่มีข้อมูลเท่านั้น
+- verification:
+  - `ReadLints` ผ่านใน `src/pages/AdminDashboard.jsx`, `src/pages/AdminReports.jsx`, `src/pages/AdminOrders.jsx`, `src/pages/AdminProducts.jsx`
+  - `npm run build` ผ่าน (มี warning เดิมเรื่อง Browserslist, dynamic/static import ของ `shippingReportExport.js`, และ chunk size)
+- rollback: revert `src/pages/AdminDashboard.jsx`, `src/pages/AdminReports.jsx`, `src/pages/AdminOrders.jsx`, `src/pages/AdminProducts.jsx`, และลบ entry นี้จาก `docs/PROJECT_PROGRESS_LOG.md`
+- next: ทดสอบจริงบนหน้าแอดมินโดยเปลี่ยนช่วงวันที่, ค้นหาชื่อลูกค้า/อีเมล, เลือก Supplier และค้นหาสินค้า เพื่อดูว่าไม่มี full-screen loading ระหว่าง filter
+
+### [2026-06-12 16:04] Admin Reports — เพิ่มวันที่และ UserEmail ในชีตยอดรวมตามออเดอร์
+- scope: admin-reports, export, order-summary, enhancement
+- files: `src/utils/orderDetailReportExport.js`, `src/utils/orderDetailReportExport.test.js`, `docs/PROJECT_PROGRESS_LOG.md`
+- summary:
+  - เพิ่มคอลัมน์ `วันที่`, `วันที่สรุปรายวัน`, และ `UserEmail` ในชีต `ยอดรวมตามออเดอร์`
+  - `วันที่` ใช้ timestamp ระดับออเดอร์จากแถวแรกของ `OrderID`
+  - `วันที่สรุปรายวัน` แปลงเป็น `YYYY-MM-DD` ด้วย logic วันที่ท้องถิ่นเดิมของรายงาน
+  - `UserEmail` ใช้ค่าระดับออเดอร์แบบ dedupe ต่อ `OrderID`
+  - อัปเดต unit test ของ `buildOrderSummaryRows` ให้ครอบคลุม 3 ฟิลด์ใหม่
+- impact: เพิ่มข้อมูลประกอบใน Excel detailed export เท่านั้น ไม่เปลี่ยนการคำนวณยอดเงิน, dashboard cards, schema, หรือข้อมูลจริงในฐานข้อมูล
+- verification:
+  - `ReadLints` ผ่านใน `src/utils/orderDetailReportExport.js`, `src/utils/orderDetailReportExport.test.js`
+  - `npm run test:run -- src/utils/orderDetailReportExport.test.js` ผ่าน 13 tests
+  - `npm run build` ผ่าน (มี warning เดิมเรื่อง Browserslist, dynamic/static import ของ `shippingReportExport.js`, และ chunk size)
+- rollback: revert `src/utils/orderDetailReportExport.js`, `src/utils/orderDetailReportExport.test.js`, และลบ entry นี้จาก `docs/PROJECT_PROGRESS_LOG.md`
+- next: export Excel จริงแล้วตรวจชีต `ยอดรวมตามออเดอร์` ว่าคอลัมน์วันที่และ `UserEmail` ตรงกับชีต `ออเดอร์`
+
 ### [2026-06-12 10:18] Admin Reports — แก้ยอดงบกำไรขาดทุนให้ reconcile กับสูตร
 - scope: admin-reports, export, profit-loss, order-reconciliation, bugfix
 - files: `src/utils/orderDetailReportExport.js`, `src/utils/orderDetailReportExport.test.js`, `docs/PROJECT_PROGRESS_LOG.md`

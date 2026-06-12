@@ -81,6 +81,7 @@ export default function AdminDashboard({ user }) {
   })
   const [chartPeriod, setChartPeriod] = useState('daily') // 'daily', 'monthly', 'yearly'
   const [loading, setLoading] = useState(true)
+  const [hasLoadedStats, setHasLoadedStats] = useState(false)
   const [dateRange, setDateRange] = useState({
     start: new Date(new Date().setDate(1)).toISOString().split('T')[0],
     end: new Date().toISOString().split('T')[0]
@@ -488,6 +489,7 @@ export default function AdminDashboard({ user }) {
       setChartData({ labels: [], datasets: [] })
     } finally {
       setLoading(false)
+      setHasLoadedStats(true)
     }
   }
 
@@ -592,7 +594,9 @@ export default function AdminDashboard({ user }) {
     }
   }
 
-  if (loading) {
+  const isRefreshingStats = loading && hasLoadedStats
+
+  if (loading && !hasLoadedStats) {
     return <LoadingSpinner />
   }
 
@@ -635,6 +639,12 @@ export default function AdminDashboard({ user }) {
                 showAllDates={showAllDates}
                 onShowAllDatesChange={setShowAllDates}
               />
+              {isRefreshingStats && (
+                <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
+                  <Icon icon="fa-sync-alt" className="fa-spin" />
+                  <span>กำลังอัปเดตข้อมูลตามฟิลเตอร์...</span>
+                </div>
+              )}
             </div>
 
             {/* Main Sales Card - Featured */}

@@ -206,8 +206,12 @@ export function buildOrderSummaryRows(rows, productSupplierById = new Map()) {
     const orderId = String(row?.OrderID || '').trim()
     if (!orderId) continue
     if (!byOrderId.has(orderId)) {
+      const timestamp = row?.Timestamp || row?.CreatedAt || row?.created_at || ''
       byOrderId.set(orderId, {
         orderId,
+        timestamp,
+        summaryDate: toLocalYmd(timestamp),
+        userEmail: String(row.UserEmail || row.email || '').trim(),
         suppliers: new Set(),
         paymentMethod: String(row.PaymentMethod || 'transfer').trim().toLowerCase(),
         itemRevenue: 0,
@@ -516,6 +520,9 @@ export async function exportOrderDetailReportXlsx({
   const orderSummaries = buildOrderSummaryRows(rows, productSupplierById)
   const orderSummaryAoa = [[
     'เลขที่ออเดอร์',
+    'วันที่',
+    'วันที่สรุปรายวัน',
+    'UserEmail',
     'ซัพพลายเออร์',
     'ช่องทางชำระ',
     'ยอดซื้อรวม',
@@ -528,6 +535,9 @@ export async function exportOrderDetailReportXlsx({
   orderSummaries.forEach((o) => {
     orderSummaryAoa.push([
       o.orderId,
+      o.timestamp,
+      o.summaryDate,
+      o.userEmail,
       o.supplier,
       paymentMethodLabel(o.paymentMethod),
       o.itemRevenue,
@@ -539,7 +549,7 @@ export async function exportOrderDetailReportXlsx({
     ])
   })
   const orderSummarySheet = XLSX.utils.aoa_to_sheet(orderSummaryAoa)
-  applySheetStyle(XLSX, orderSummarySheet, { colWidths: [24, 22, 14, 16, 18, 14, 22, 16, 12] })
+  applySheetStyle(XLSX, orderSummarySheet, { colWidths: [24, 24, 16, 30, 22, 14, 16, 18, 14, 22, 16, 12] })
   XLSX.utils.book_append_sheet(workbook, orderSummarySheet, 'ยอดรวมตามออเดอร์')
 
   // ชีต 3: สรุปลูกค้า
