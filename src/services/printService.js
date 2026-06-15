@@ -228,6 +228,16 @@ function getLineItemNote(item) {
   return String(item?.note || item?.notes || item?.Notes || '').trim()
 }
 
+function getAdminOrderNote(order) {
+  const info = String(order?.DiscountInfo || order?.discountInfo || '').trim()
+  if (!info) return ''
+  const part = info
+    .split('|')
+    .map((x) => x.trim())
+    .find((x) => x.startsWith('หมายเหตุแอดมิน:'))
+  return part ? part.replace(/^หมายเหตุแอดมิน:\s*/, '').trim() : ''
+}
+
 const fetchCustomerPhone = async (userEmail) => {
   const row = await fetchCustomerShippingProfile(userEmail)
   return row?.phone || ''
@@ -539,7 +549,10 @@ export const printService = {
       allKeys: Object.keys(order)
     })
     const grandTotal = subtotal - totalDiscount + shipping
-    const shippingLabel = getShippingMethodLabel(order)
+    const adminOrderNote = getAdminOrderNote(order)
+    const adminOrderNoteHtml = adminOrderNote
+      ? `<div style="margin-top: 12px; border: 1px solid #d1d5db; background: #ffffff; color: #111827; border-radius: 4px; padding: 8px; font-size: 8pt;"><strong>หมายเหตุแอดมิน:</strong> ${escapeHtml(adminOrderNote)}</div>`
+      : ''
     
     // Use Timestamp (order date) instead of current date
     const orderDateStr = formatOrderDate(order.Timestamp || order.CreatedAt || order.date)
@@ -578,9 +591,6 @@ export const printService = {
       <div class="box" style="background-color: #f9fafb;">
         <h3 style="margin: 0 0 8px 0; font-size: 8pt; font-weight: bold; color: #1f2937; border-bottom: 1px solid #eee; padding-bottom: 4px;">ลูกค้า (Customer)</h3>
         <div>${shippingHtml}</div>
-        <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #e5e7eb; font-size: 7pt; color: #1f2937;">
-          <strong>หมายเหตุ:</strong> ${escapeHtml(shippingLabel)}
-        </div>
       </div>
       <table style="width: 100%; border: 1px solid #ddd;">
         <thead>
@@ -604,6 +614,7 @@ export const printService = {
           </tr>
         </tfoot>
       </table>
+      ${adminOrderNoteHtml}
       <div style="margin-top: 30px; text-align: center; font-size: 8pt; color: #666;">
         <p>ขอบคุณที่ใช้บริการ</p>
       </div>
@@ -697,6 +708,10 @@ export const printService = {
     const shippingAmount =
       Number(order['Shipping Cost'] || order.ShippingCost || order.Shipping || 0) || 0
     const grandTotal = subtotal - discountAmount + shippingAmount
+    const adminOrderNote = getAdminOrderNote(order)
+    const adminOrderNoteHtml = adminOrderNote
+      ? `<div class="order-note"><strong>หมายเหตุแอดมิน:</strong> ${escapeHtml(adminOrderNote)}</div>`
+      : ''
 
     const content = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>รายละเอียดออเดอร์ ${escapeHtml(orderId)}</title>
       <style>
@@ -716,6 +731,7 @@ export const printService = {
         .summary div { display: flex; justify-content: space-between; padding: 3px 0; font-size: 9pt; }
         .summary .total { border-top: 1px solid #6ee7b7; margin-top: 6px; padding-top: 8px; font-weight: bold; font-size: 11pt; color: #047857; }
         .disc { color: #dc2626; }
+        .order-note { margin-top: 12px; border: 1px solid #fcd34d; background: #fffbeb; color: #92400e; border-radius: 6px; padding: 9px; font-size: 9pt; }
       </style>
     </head><body>
       <h1>รายละเอียดออเดอร์</h1>
@@ -744,6 +760,7 @@ export const printService = {
         <div><span>ค่าขนส่ง</span><span>฿${shippingAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
         <div class="total"><span>ยอดสุทธิ</span><span>฿${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
       </div>
+      ${adminOrderNoteHtml}
     </body></html>`
 
     openPrintWindow(content)

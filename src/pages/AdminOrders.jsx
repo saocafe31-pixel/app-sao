@@ -57,6 +57,16 @@ function parseCheckoutBatchFromDiscountInfo(order) {
   return m ? m[1].trim() : ''
 }
 
+function parseAdminOrderNote(order) {
+  const info = String(order?.DiscountInfo ?? order?.discountInfo ?? '')
+  if (!info.trim()) return ''
+  const part = info
+    .split('|')
+    .map((x) => x.trim())
+    .find((x) => x.startsWith('หมายเหตุแอดมิน:'))
+  return part ? part.replace(/^หมายเหตุแอดมิน:\s*/, '').trim() : ''
+}
+
 function parseOrderDiscountBreakdown(discountInfoRaw, fallbackDiscount = 0) {
   const discountInfo = String(discountInfoRaw || '')
   let couponDiscount = 0
@@ -2212,6 +2222,10 @@ export default function AdminOrders({ user }) {
                                           ).totalDiscount
                                           const shippingAmount = Number(order['Shipping Cost'] || order.ShippingCost || order.Shipping || 0) || 0
                                           const grandTotal = subtotal - discountAmount + shippingAmount
+                                          const adminOrderNote = parseAdminOrderNote(order)
+                                          const adminOrderNoteHtml = adminOrderNote
+                                            ? `<div class="mt-3 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900"><b>หมายเหตุแอดมิน:</b> ${escapeHtml(adminOrderNote)}</div>`
+                                            : ''
 
                                           const summaryHtml = `
                                             <div class="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/40 p-3">
@@ -2234,7 +2248,7 @@ export default function AdminOrders({ user }) {
                                             </div>
                                           `
 
-                                          return `${itemsHtml}${summaryHtml}`
+                                          return `${itemsHtml}${summaryHtml}${adminOrderNoteHtml}`
                                         })()}
                                       </div>
                                     </div>

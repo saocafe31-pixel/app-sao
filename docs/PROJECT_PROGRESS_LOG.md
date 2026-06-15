@@ -26,6 +26,42 @@
 
 ## Change Entries
 
+### [2026-06-15 15:18] Receipt/Admin Orders — ปรับ note แอดมินและถอด note จัดส่ง
+- scope: receipt, admin-orders, print, admin-note, polish
+- files: `src/services/printService.js`, `src/pages/AdminOrders.jsx`, `docs/PROJECT_PROGRESS_LOG.md`
+- summary:
+  - ลบบรรทัด `หมายเหตุ: จัดส่ง/รับเอง` ออกจากกล่องลูกค้าในใบเสร็จรับเงิน
+  - ปรับสี `หมายเหตุแอดมิน` ใน popup หน้าแอดมินจาก amber เป็นโทนปกติสีดำ
+  - ปรับสี `หมายเหตุแอดมิน` ในใบเสร็จรับเงินเป็นพื้นขาว เส้นเทา ตัวอักษรดำ
+  - ไม่ปรับหน้าพิมพ์รายละเอียดออเดอร์ตามคำขอ
+- impact:
+  - เปลี่ยนเฉพาะการแสดงผลเอกสาร/หน้าแอดมิน ไม่กระทบยอดเงิน, shipping method, หรือข้อมูลออเดอร์ที่บันทึก
+- verification:
+  - `ReadLints` ผ่านใน `src/services/printService.js`, `src/pages/AdminOrders.jsx`
+- rollback:
+  - commit: N/A
+  - safe-revert: คืนบล็อก shipping note ใน `printReceipt` และคลาสสี amber ของ note ใน `AdminOrders.jsx`
+- next:
+  - ตรวจ print preview ใบเสร็จและ popup รายละเอียดออเดอร์จากออเดอร์แอดมินที่มี note
+
+### [2026-06-15 15:05] Admin Orders — แสดงหมายเหตุแอดมินในรายละเอียดและใบเสร็จ
+- scope: admin-orders, receipt, print, admin-note, enhancement
+- files: `src/pages/AdminOrders.jsx`, `src/services/printService.js`, `docs/PROJECT_PROGRESS_LOG.md`
+- summary:
+  - เพิ่มตัวอ่าน `หมายเหตุแอดมิน:` จาก `DiscountInfo` ที่ modal สร้างออเดอร์แอดมินบันทึกไว้แล้ว
+  - แสดง `หมายเหตุแอดมิน` เป็นกล่องใต้สรุปยอดใน popup รายละเอียดออเดอร์
+  - แสดง `หมายเหตุแอดมิน` ใต้ตาราง/สรุปยอดในใบเสร็จรับเงินและใบรายละเอียดออเดอร์
+- impact:
+  - ช่วยให้ทีมตรวจออเดอร์และทีมแพ็คเห็น note ระดับออเดอร์จากแอดมินในจุดพิมพ์งานสำคัญ
+  - ไม่เปลี่ยน schema, สูตรยอดเงิน, การคิดส่วนลด, การคิดค่าส่ง, หรือ flow บันทึกออเดอร์
+- verification:
+  - `ReadLints` ผ่านใน `src/pages/AdminOrders.jsx`, `src/services/printService.js`
+- rollback:
+  - commit: N/A
+  - safe-revert: ลบ helper parse note และ HTML กล่อง `หมายเหตุแอดมิน` ใน `AdminOrders.jsx`/`printService.js`
+- next:
+  - ตรวจ visual จากออเดอร์แอดมินที่มี `หมายเหตุแอดมิน` จริงใน popup และ print preview
+
 ### [2026-06-15 11:20] Admin Orders — แนบสลิปและหมายเหตุรายสินค้าในออเดอร์แอดมิน
 - scope: admin-orders, create-order, receipt, packing, slip-upload, enhancement
 - files: `src/components/admin/AdminCreateOrderModal.jsx`, `src/services/orderService.js`, `src/hooks/useOrders.js`, `src/services/printService.js`, `src/pages/AdminOrders.jsx`, `docs/PROJECT_PROGRESS_LOG.md`
