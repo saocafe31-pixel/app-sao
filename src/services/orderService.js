@@ -74,7 +74,8 @@ function buildOrdersFromRawRows (rawRows) {
       id: row.ProductID || row.productid || null,
       name: row.Itemname || row.ItemName || row.itemname || row.item_name,
       qty: row.Qty || row.qty || 0,
-      price: row.Price || row.price || 0
+      price: row.Price || row.price || 0,
+      note: row.Notes || row.notes || ''
     })
   })
 
@@ -485,7 +486,8 @@ export const orderService = {
         'Shipping Cost': shippingCost,
         Weight: weight,
         ShippingMethod: orderData.shippingMethod || 'delivery',
-        PaymentMethod: orderData.paymentMethod || 'transfer'
+        PaymentMethod: orderData.paymentMethod || 'transfer',
+        Notes: item.note || item.notes || null
       }
     })
 
@@ -757,7 +759,8 @@ export const orderService = {
           Timestamp: firstRow.Timestamp || firstRow.timestamp || new Date().toISOString(),
           Discount: Number(firstRow.Discount ?? firstRow.discount ?? 0) || 0,
           'Shipping Cost': newShipping !== null ? Number(newShipping) : (Number(firstRow['Shipping Cost'] ?? firstRow.Shipping ?? 0) || 0),
-          Weight: Number(firstRow.Weight ?? firstRow.weight ?? 0) || 0
+          Weight: Number(firstRow.Weight ?? firstRow.weight ?? 0) || 0,
+          Notes: item.note || item.notes || null
         }))
 
         const { data: insertedData, error: insertError } = await supabase
@@ -821,7 +824,8 @@ export const orderService = {
         'Shipping Cost': newShipping !== null ? Number(newShipping) : (Number(firstRow['Shipping Cost'] ?? firstRow.Shipping ?? 0) || 0),
         Weight: Number(firstRow.Weight ?? firstRow.weight ?? 0) || 0,
         ShippingMethod: firstRow.ShippingMethod || firstRow.shipping_method || 'delivery',
-        PaymentMethod: firstRow.PaymentMethod || firstRow.payment_method || 'transfer'
+        PaymentMethod: firstRow.PaymentMethod || firstRow.payment_method || 'transfer',
+        Notes: item.note || item.notes || null
       }))
 
       const { data: insertedData, error: insertError } = await supabase

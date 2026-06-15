@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Swal from 'sweetalert2'
 import Icon from '../common/Icon'
 import { creditService } from '../../services/creditService'
+import { imageService } from '../../services/imageService'
 import { orderService } from '../../services/orderService'
 import { productService } from '../../services/productService'
 import { invalidateByPrefix } from '../../utils/cache'
@@ -119,7 +120,7 @@ function filterProductsForPicker(catalog, q, maxNoSearch, maxSearch) {
   return list.slice(0, max)
 }
 
-const defaultLine = () => ({ productId: '', qty: 1 })
+const defaultLine = () => ({ productId: '', qty: 1, note: '' })
 
 /**
  * โมดัลสร้างออเดอร์จากแอดมิน — รีเซ็ตเมื่อปิด / เปิดใหม่
@@ -151,6 +152,8 @@ export default function AdminCreateOrderModal({ open, onClose, adminUser, onCrea
   const [discountRaw, setDiscountRaw] = useState(0)
   const [orderStatus, setOrderStatus] = useState('รอตรวจสอบ')
   const [paymentMethod, setPaymentMethod] = useState('transfer')
+  const [slipFile, setSlipFile] = useState(null)
+  const [slipPreview, setSlipPreview] = useState(null)
   const [deductStock, setDeductStock] = useState(true)
   const [adminNote, setAdminNote] = useState('')
 
@@ -188,6 +191,8 @@ export default function AdminCreateOrderModal({ open, onClose, adminUser, onCrea
     setDiscountRaw(0)
     setOrderStatus('รอตรวจสอบ')
     setPaymentMethod('transfer')
+    setSlipFile(null)
+    setSlipPreview(null)
     setDeductStock(true)
     setAdminNote('')
     setSubmitting(false)
@@ -371,6 +376,10 @@ export default function AdminCreateOrderModal({ open, onClose, adminUser, onCrea
     setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, qty } : l)))
   }
 
+  const setLineNote = (idx, value) => {
+    setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, note: value } : l)))
+  }
+
   const pickProductForActiveLine = (productId) => {
     setLines((prev) =>
       prev.map((l, i) => (i === activeLineIndex ? { ...l, productId } : l))
@@ -407,10 +416,18 @@ export default function AdminCreateOrderModal({ open, onClose, adminUser, onCrea
           freeQty: 0,
           isFree: false,
           promotionId: null,
-          image: p.image || ''
+          image: p.image || '',
+          note: String(l.note || '').trim()
         }
       })
   }
+
+  useEffect(() => {
+    if (paymentMethod !== 'transfer') {
+      setSlipFile(null)
+      setSlipPreview(null)
+    }
+  }, [paymentMethod])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -474,6 +491,10 @@ export default function AdminCreateOrderModal({ open, onClose, adminUser, onCrea
       Swal.fire({ title: 'กำลังสร้างออเดอร์...', didOpen: () => Swal.showLoading(), allowOutsideClick: false })
 
       try {
+        const slipURL = paymentMethod === 'transfer' && slipFile
+          ? await imageService.uploadOrderSlip(slipFile, orderId, email)
+          : null
+
         await orderService.placeOrder(
           {
             id: orderId,
@@ -489,7 +510,7 @@ export default function AdminCreateOrderModal({ open, onClose, adminUser, onCrea
             shippingCost: ship,
             totalWeight: totalWeightGrams,
             tracking: null,
-            slipURL: null,
+            slipURL,
             shippingMethod,
             paymentMethod,
             subdistrict: subdistrict.trim() || null,
@@ -738,6 +759,19 @@ export default function AdminCreateOrderModal({ open, onClose, adminUser, onCrea
                               ฿{unit.toLocaleString()} × {qty} = <b>฿{lineTotal.toLocaleString()}</b>
                             </span>
                           </div>
+                          <div className="mt-2">
+                            <label className="block text-[11px] font-bold text-gray-500 mb-1">
+                              หมายเหตุสินค้า / โน้ตแพ็คสินค้า
+                            </label>
+                            <input
+                              type="text"
+                              value={line.note || ''}
+                              onClick={(ev) => ev.stopPropagation()}
+                              onChange={(e) => setLineNote(idx, e.target.value)}
+                              className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs"
+                              placeholder="เช่น แพ็คแยก, ระวังแตก, หมายเหตุเฉพาะสินค้านี้"
+                            />
+                          </div>
                         </div>
                       )
                     })}
@@ -859,7 +893,7 @@ export default function AdminCreateOrderModal({ open, onClose, adminUser, onCrea
                     onChange={(e) => setPaymentMethod(e.target.value)}
                     className="w-full px-3 py-2 border rounded text-sm"
                   >
-                    <option value="transfer">โอนเงิน (ไม่แนบสลิป)</option>
+                    <option value="transfer">โอนเงิน</option>
                     <option value="credit">เครดิต (หักทันที)</option>
                   </select>
                 </div>
@@ -872,6 +906,66 @@ export default function AdminCreateOrderModal({ open, onClose, adminUser, onCrea
                   หักสต็อกสินค้า
                 </label>
               </section>
+
+              {paymentMethod === 'transfer' && (
+                <section className="space-y-2">
+                  <h3 className="text-sm font-bold text-emerald-800 border-b border-emerald-100 pb-1">
+                    สลิปโอนเงิน
+                  </h3>
+                  <div
+                    className="border-2 border-dashed border-gray-300 p-4 rounded-lg text-center bg-gray-50 cursor-pointer hover:border-emerald-500 transition-colors"
+                    onClick={() => document.getElementById('admin-create-order-slip-input')?.click()}
+                  >
+                    <input
+                      id="admin-create-order-slip-input"
+                      type="file"
+                      accept="image/*"
+                      hidden
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null
+                        setSlipFile(file)
+                        if (file) {
+                          const reader = new FileReader()
+                          reader.onloadend = () => setSlipPreview(reader.result)
+                          reader.readAsDataURL(file)
+                        } else {
+                          setSlipPreview(null)
+                        }
+                      }}
+                    />
+                    {slipPreview ? (
+                      <div className="relative flex flex-col items-center gap-2">
+                        <img
+                          src={slipPreview}
+                          alt="สลิปโอนเงิน"
+                          className="max-h-48 max-w-full object-contain rounded-lg border border-emerald-200 shadow-sm bg-white"
+                        />
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setSlipFile(null)
+                            setSlipPreview(null)
+                            const input = document.getElementById('admin-create-order-slip-input')
+                            if (input) input.value = ''
+                          }}
+                          className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 transition"
+                          aria-label="ลบสลิป"
+                        >
+                          <Icon icon="fa-times" />
+                        </button>
+                        <span className="text-xs text-gray-500 truncate max-w-xs">{slipFile?.name}</span>
+                      </div>
+                    ) : (
+                      <div className="text-gray-400 flex flex-col items-center gap-2">
+                        <Icon icon="fa-cloud-upload-alt" className="text-3xl" />
+                        <span className="text-sm font-semibold">แตะที่นี่เพื่อแนบสลิปโอนเงิน</span>
+                        <span className="text-xs">ไม่บังคับ ถ้าแนบ ระบบจะบันทึกไว้ในออเดอร์</span>
+                      </div>
+                    )}
+                  </div>
+                </section>
+              )}
 
               <div>
                 <label className="block text-xs font-bold text-gray-600 mb-1">หมายเหตุแอดมิน</label>

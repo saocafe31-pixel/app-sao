@@ -12,7 +12,7 @@
 ## Current Phase
 
 - Phase: `Stabilization + Reporting`
-- Updated At: `2026-06-12`
+- Updated At: `2026-06-15`
 - Owner: `Team + Agent`
 - Next Goal:
   - ทำให้รายงานยอดขาย/ใบกำกับภาษีครบและเชื่อมโยงกับการ export
@@ -25,6 +25,42 @@
 - [2026-05-09] ตั้งมาตรฐาน release cadence + tag format สำหรับ rollback ระดับ release
 
 ## Change Entries
+
+### [2026-06-15 11:20] Admin Orders — แนบสลิปและหมายเหตุรายสินค้าในออเดอร์แอดมิน
+- scope: admin-orders, create-order, receipt, packing, slip-upload, enhancement
+- files: `src/components/admin/AdminCreateOrderModal.jsx`, `src/services/orderService.js`, `src/hooks/useOrders.js`, `src/services/printService.js`, `src/pages/AdminOrders.jsx`, `docs/PROJECT_PROGRESS_LOG.md`
+- summary:
+  - เพิ่มช่องแนบสลิปโอนเงินใน modal `สร้างออเดอร์ (แอดมิน)` เมื่อเลือกช่องทางชำระ `โอนเงิน`
+  - ใช้ `imageService.uploadOrderSlip` และ bucket `order-slips` เดิม เพื่อบันทึก URL ลง `SlipURL` ของออเดอร์
+  - เพิ่มช่อง `หมายเหตุสินค้า / โน้ตแพ็คสินค้า` ต่อรายการสินค้าใน modal สร้างออเดอร์แอดมิน
+  - บันทึก note รายสินค้าในคอลัมน์ `Notes` ต่อแถวสินค้า และ map กลับเป็น `item.note` ใน `orderService`/`useOrders`
+  - แสดง `หมายเหตุสินค้า` ใต้ชื่อสินค้าใน popup รายละเอียดออเดอร์, ใบเสร็จรับเงิน, และใบรายละเอียดออเดอร์ เพื่อให้ทีมแพ็คเห็นตอนตรวจ/พิมพ์
+- impact:
+  - เพิ่มข้อมูลประกอบในออเดอร์แอดมินและเอกสารพิมพ์เท่านั้น ไม่เปลี่ยนสูตรยอดเงิน, ค่าจัดส่ง, สถานะออเดอร์, หรือ schema
+  - สลิปเป็น optional สำหรับแอดมิน ถ้าไม่แนบจะบันทึก `SlipURL` เป็น `null` ตามเดิม
+  - อาศัยคอลัมน์ `Notes` และ storage flow เดิมที่ระบบรายงาน/ออเดอร์ใช้อยู่แล้ว
+- verification:
+  - `ReadLints` ผ่านใน `src/components/admin/AdminCreateOrderModal.jsx`, `src/services/orderService.js`, `src/hooks/useOrders.js`, `src/services/printService.js`, `src/pages/AdminOrders.jsx`
+  - `npm run build` ผ่าน (มี warning เดิมเรื่อง Browserslist, dynamic/static import ของ `shippingReportExport.js`, และ chunk size)
+  - ตรวจ MCP schema แล้วพบว่า project ที่ต่ออยู่ไม่ตรงกับ schema แอป (`Order`/`OrderItem` แทนตาราง `order`) จึงไม่ใช้ MCP เปลี่ยนฐานข้อมูล
+- rollback: revert `src/components/admin/AdminCreateOrderModal.jsx`, `src/services/orderService.js`, `src/hooks/useOrders.js`, `src/services/printService.js`, `src/pages/AdminOrders.jsx`, และลบ entry นี้จาก `docs/PROJECT_PROGRESS_LOG.md`
+- next: สร้างออเดอร์แอดมินแบบโอนเงินพร้อมแนบสลิปและ note รายสินค้า แล้วเปิดรายละเอียด/พิมพ์ใบเสร็จ/พิมพ์รายละเอียดออเดอร์เพื่อตรวจว่า URL สลิปและหมายเหตุแสดงถูกต้อง
+
+### [2026-06-15 11:06] Receipt — เพิ่มหมายเหตุวิธีรับสินค้า
+- scope: receipt, print, admin-orders, customer-document, enhancement
+- files: `src/services/printService.js`, `docs/PROJECT_PROGRESS_LOG.md`
+- summary:
+  - เพิ่ม helper อ่าน `ShippingMethod` หลายรูปแบบ (`ShippingMethod`, `shippingmethod`, `shipping_method`)
+  - แสดงบรรทัด `หมายเหตุ: จัดส่ง` หรือ `หมายเหตุ: รับเอง` ในกล่องข้อมูลลูกค้าของใบเสร็จรับเงิน
+  - ปรับหน้าพิมพ์รายละเอียดออเดอร์ให้ใช้ helper เดียวกันเพื่อให้ label วิธีรับสินค้าสอดคล้องกัน
+- impact:
+  - เพิ่มข้อมูลประกอบบนเอกสารพิมพ์เท่านั้น ไม่เปลี่ยนยอดเงิน, ค่าจัดส่ง, สถานะออเดอร์, schema, หรือข้อมูลจริงในฐานข้อมูล
+  - ออเดอร์ที่ไม่มีค่า `ShippingMethod` จะแสดงค่าเริ่มต้นเป็น `จัดส่ง`
+- verification:
+  - `ReadLints` ผ่านใน `src/services/printService.js`
+  - `npm run build` ผ่าน (มี warning เดิมเรื่อง Browserslist, dynamic/static import ของ `shippingReportExport.js`, และ chunk size)
+- rollback: revert `src/services/printService.js` และลบ entry นี้จาก `docs/PROJECT_PROGRESS_LOG.md`
+- next: ทดลองพิมพ์ใบเสร็จจากออเดอร์แบบ `delivery` และ `pickup` เพื่อตรวจข้อความหมายเหตุบนเอกสารจริง
 
 ### [2026-06-12 16:20] Admin UX — ปรับ filter realtime ไม่ให้ขึ้น loading screen
 - scope: admin, UX, filters, loading-state, enhancement

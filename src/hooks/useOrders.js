@@ -80,7 +80,8 @@ export function useOrders(user) {
         order.Items.push({
           name: row.Itemname || row.ItemName || row.itemname || row.item_name,
           qty: row.Qty || row.qty || 0,
-          price: row.Price || row.price || 0
+          price: row.Price || row.price || 0,
+          note: row.Notes || row.notes || ''
         })
       })
 

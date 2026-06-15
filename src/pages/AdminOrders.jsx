@@ -2170,6 +2170,10 @@ export default function AdminOrders({ user }) {
                                               .filter((line) => !/^BUNDLE_IDS:/i.test(line))
                                               .map((line) => `<div class="text-xs text-gray-600 mt-0.5">${escapeHtml(line)}</div>`)
                                               .join('')
+                                            const itemNote = String(item.note || item.notes || item.Notes || '').trim()
+                                            const noteLine = itemNote
+                                              ? `<div class="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded px-2 py-1 mt-1.5"><b>หมายเหตุสินค้า:</b> ${escapeHtml(itemNote)}</div>`
+                                              : ''
                                             const qtyText = freeQty > 0
                                               ? `${item.qty} (ชำระ ${paidQty}, แถม ${freeQty})`
                                               : `${item.qty}`
@@ -2182,6 +2186,7 @@ export default function AdminOrders({ user }) {
                                                       ${productId ? `<span class="text-gray-500 text-xs font-mono mr-1">${escapeHtml(String(productId))}</span>` : ''}${title}
                                                     </div>
                                                     ${detailLines}
+                                                    ${noteLine}
                                                     <div class="text-xs text-gray-700 mt-1.5">
                                                       จำนวน: <b>${qtyText}</b> • ราคา/หน่วย: ฿${unitPrice.toLocaleString()}
                                                     </div>

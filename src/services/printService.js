@@ -219,6 +219,15 @@ function formatShippingAddressHtml(p, opts = {}) {
   return bits.join('')
 }
 
+function getShippingMethodLabel(order) {
+  const method = String(order?.ShippingMethod || order?.shippingmethod || order?.shipping_method || '').trim().toLowerCase()
+  return method === 'pickup' ? 'รับเอง' : 'จัดส่ง'
+}
+
+function getLineItemNote(item) {
+  return String(item?.note || item?.notes || item?.Notes || '').trim()
+}
+
 const fetchCustomerPhone = async (userEmail) => {
   const row = await fetchCustomerShippingProfile(userEmail)
   return row?.phone || ''
@@ -412,15 +421,21 @@ export const printService = {
     const shippingHtml = formatShippingAddressHtml(recipient, { variant: 'receipt' })
     const items = order.Items || []
     
-    const itemsHtml = items.map((it, i) => `
-      <tr>
-        <td style="text-align:center;border-bottom:1px solid #eee;padding:6px 4px;font-size:8pt;">${i+1}</td>
-        <td style="border-bottom:1px solid #eee;padding:6px 4px;font-size:8pt;">${escapeHtmlMultiline(it.name)}</td>
-        <td style="text-align:center;border-bottom:1px solid #eee;padding:6px 4px;font-size:8pt;">${it.qty || 0}</td>
-        <td style="text-align:right;border-bottom:1px solid #eee;padding:6px 4px;font-size:8pt;">${Number(it.price || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-        <td style="text-align:right;border-bottom:1px solid #eee;padding:6px 4px;font-size:8pt;">${(Number(it.price || 0) * (it.qty || 0)).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-      </tr>
-    `).join('')
+    const itemsHtml = items.map((it, i) => {
+      const itemNote = getLineItemNote(it)
+      const noteHtml = itemNote
+        ? `<div style="margin-top:3px;color:#92400e;font-size:7pt;"><strong>หมายเหตุสินค้า:</strong> ${escapeHtml(itemNote)}</div>`
+        : ''
+      return `
+        <tr>
+          <td style="text-align:center;border-bottom:1px solid #eee;padding:6px 4px;font-size:8pt;">${i+1}</td>
+          <td style="border-bottom:1px solid #eee;padding:6px 4px;font-size:8pt;">${escapeHtmlMultiline(it.name)}${noteHtml}</td>
+          <td style="text-align:center;border-bottom:1px solid #eee;padding:6px 4px;font-size:8pt;">${it.qty || 0}</td>
+          <td style="text-align:right;border-bottom:1px solid #eee;padding:6px 4px;font-size:8pt;">${Number(it.price || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+          <td style="text-align:right;border-bottom:1px solid #eee;padding:6px 4px;font-size:8pt;">${(Number(it.price || 0) * (it.qty || 0)).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+        </tr>
+      `
+    }).join('')
     
     // Parse discount info to separate coupon discount and promotion discount
     let couponDiscount = 0
@@ -524,6 +539,7 @@ export const printService = {
       allKeys: Object.keys(order)
     })
     const grandTotal = subtotal - totalDiscount + shipping
+    const shippingLabel = getShippingMethodLabel(order)
     
     // Use Timestamp (order date) instead of current date
     const orderDateStr = formatOrderDate(order.Timestamp || order.CreatedAt || order.date)
@@ -562,6 +578,9 @@ export const printService = {
       <div class="box" style="background-color: #f9fafb;">
         <h3 style="margin: 0 0 8px 0; font-size: 8pt; font-weight: bold; color: #1f2937; border-bottom: 1px solid #eee; padding-bottom: 4px;">ลูกค้า (Customer)</h3>
         <div>${shippingHtml}</div>
+        <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #e5e7eb; font-size: 7pt; color: #1f2937;">
+          <strong>หมายเหตุ:</strong> ${escapeHtml(shippingLabel)}
+        </div>
       </div>
       <table style="width: 100%; border: 1px solid #ddd;">
         <thead>
@@ -604,7 +623,7 @@ export const printService = {
       .toLowerCase()
     const paymentLabel =
       pmRaw === 'credit' ? 'เครดิต' : pmRaw === 'transfer' ? 'โอนเงิน' : 'ไม่ระบุ'
-    const shippingLabel = order.ShippingMethod === 'pickup' ? 'รับเอง' : 'จัดส่ง'
+    const shippingLabel = getShippingMethodLabel(order)
     const discountInfo = String(order.DiscountInfo || order.discountInfo || '')
     const batchMatch = discountInfo.match(/Batch:\s*([^|]+)/i)
     const batchLine = batchMatch
@@ -643,6 +662,10 @@ export const printService = {
           .filter((line) => !/^BUNDLE_IDS:/i.test(line))
           .map((line) => `<div class="sub">${escapeHtml(line)}</div>`)
           .join('')
+        const itemNote = getLineItemNote(item)
+        const noteHtml = itemNote
+          ? `<div class="sub" style="margin-top:4px;color:#92400e;"><strong>หมายเหตุสินค้า:</strong> ${escapeHtml(itemNote)}</div>`
+          : ''
         const qtyText =
           freeQty > 0
             ? `${item.qty} (ชำระ ${paidQty}, แถม ${freeQty})`
@@ -653,6 +676,7 @@ export const printService = {
           <td style="border:1px solid #ddd;padding:6px;">
             <div class="item-title">${title}</div>
             ${detailLines}
+            ${noteHtml}
           </td>
           <td style="text-align:center;border:1px solid #ddd;padding:6px;">${escapeHtml(qtyText)}</td>
           <td style="text-align:right;border:1px solid #ddd;padding:6px;">${unitPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
